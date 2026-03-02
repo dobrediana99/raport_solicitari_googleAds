@@ -109,6 +109,16 @@ const getFallbackValue = (colValues, primaryId, fallbackId) => {
   return val;
 };
 
+const normalizeBreakdownValue = (rawValue) => {
+  const extracted = extractDisplayValue(rawValue);
+  const normalized = cleanDisplayString(extracted);
+  if (!normalized) return 'Nespecificat';
+
+  const lowered = normalized.toLowerCase();
+  if (lowered === '(necompletat)' || lowered === 'necompletat') return 'Nespecificat';
+  return normalized;
+};
+
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
 // ====================================================
@@ -220,7 +230,7 @@ async function buildReport(startDateStr, endDateStr, sources, options = {}) {
   const calcDistribution = (items, mapperFn) => {
     const counts = {};
     items.forEach(item => {
-      const val = mapperFn(item);
+      const val = normalizeBreakdownValue(mapperFn(item));
       counts[val] = (counts[val] || 0) + 1;
     });
     const total = items.length;

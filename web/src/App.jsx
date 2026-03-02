@@ -55,6 +55,20 @@ const StatCard = ({ label, value, subValue, color = "indigo", icon: Icon }) => {
   );
 };
 
+const normalizeBreakdownCellValue = (value) => {
+  if (value === null || value === undefined) return 'Nespecificat';
+  if (typeof value === 'object') {
+    return value.label || value.name || value.title || value.text || 'Nespecificat';
+  }
+  const str = String(value).trim();
+  if (!str) return 'Nespecificat';
+  const lowered = str.toLowerCase();
+  if (str === '[object Object]' || lowered === '(necompletat)' || lowered === 'necompletat') {
+    return 'Nespecificat';
+  }
+  return str;
+};
+
 const TableBreakdown = ({ title, data }) => (
   <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
     <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
@@ -64,15 +78,15 @@ const TableBreakdown = ({ title, data }) => (
       <table className="w-full text-sm text-left border-separate border-spacing-0">
         <thead className="text-[10px] text-slate-400 uppercase">
           <tr>
-            <th className="px-4 py-2 font-bold bg-slate-50 sticky top-0 z-10">Valoare</th>
-            <th className="px-4 py-2 font-bold text-right bg-slate-50 sticky top-0 z-10">Nr</th>
-            <th className="px-4 py-2 font-bold text-right bg-slate-50 sticky top-0 z-10">%</th>
+            <th className="px-4 py-2 font-bold bg-slate-50">Valoare</th>
+            <th className="px-4 py-2 font-bold text-right bg-slate-50">Nr</th>
+            <th className="px-4 py-2 font-bold text-right bg-slate-50">%</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {data?.map((row, i) => (
             <tr key={i} className="hover:bg-slate-50 transition-colors">
-              <td className="px-4 py-2 font-medium text-slate-700 truncate max-w-[140px]">{row.valoare}</td>
+              <td className="px-4 py-2 font-medium text-slate-700 truncate max-w-[140px]">{normalizeBreakdownCellValue(row.valoare)}</td>
               <td className="px-4 py-2 text-right font-bold">{row.nr}</td>
               <td className="px-4 py-2 text-right">
                 <span className="text-xs text-slate-400 font-mono">{row.procent}%</span>
