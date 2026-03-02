@@ -89,21 +89,23 @@ describe('isDateInRange', () => {
 });
 
 describe('computeFinancials', () => {
-  it('fallback profit = deal_value - numeric_mkpknkjp when formula missing', () => {
+  it('does not use fallback profit when formula is missing', () => {
     const items = [
       {
         column_values: [
           { id: 'deal_value', number: 1000 },
           { id: 'numeric_mkpknkjp', number: 400 },
           { id: 'formula_mkre3gx1', text: '', value: null },
+          { id: 'formula_mkxwd14p', display_value: '30' },
           { id: 'color_mkse3amh', label: 'EUR' }
         ]
       }
     ];
     const out = computeFinancials(items);
-    assert.strictEqual(out.financials.total_profit_all, 600);
-    assert.strictEqual(out.profit_from_fallback_count, 1);
+    assert.strictEqual(out.financials.total_profit_all, 0);
+    assert.strictEqual(out.profit_from_fallback_count, 0);
     assert.strictEqual(out.profit_from_formula_count, 0);
+    assert.strictEqual(out.profit_missing_count, 1);
   });
   it('formula profit used when present', () => {
     const items = [
@@ -112,6 +114,7 @@ describe('computeFinancials', () => {
           { id: 'deal_value', number: 1000 },
           { id: 'numeric_mkpknkjp', number: 400 },
           { id: 'formula_mkre3gx1', display_value: '650' },
+          { id: 'formula_mkxwd14p', display_value: '65' },
           { id: 'color_mkse3amh', label: 'EUR' }
         ]
       }
@@ -119,6 +122,29 @@ describe('computeFinancials', () => {
     const out = computeFinancials(items);
     assert.strictEqual(out.financials.total_profit_all, 650);
     assert.strictEqual(out.profit_from_formula_count, 1);
+  });
+  it('profitability is average from formula_mkxwd14p', () => {
+    const items = [
+      {
+        column_values: [
+          { id: 'deal_value', number: 1000 },
+          { id: 'formula_mkre3gx1', display_value: '200' },
+          { id: 'formula_mkxwd14p', display_value: '20' },
+          { id: 'color_mkse3amh', label: 'EUR' }
+        ]
+      },
+      {
+        column_values: [
+          { id: 'deal_value', number: 500 },
+          { id: 'formula_mkre3gx1', display_value: '100' },
+          { id: 'formula_mkxwd14p', display_value: '40' },
+          { id: 'color_mkse3amh', label: 'EUR' }
+        ]
+      }
+    ];
+    const out = computeFinancials(items);
+    assert.strictEqual(out.financials.profitabilitate_ponderata, 30);
+    assert.strictEqual(out.financials.valid_profitability_count, 2);
   });
   it('null never becomes 0 in sums', () => {
     const items = [
@@ -143,6 +169,7 @@ describe('computeFinancials', () => {
           { id: 'deal_value', number: 100 },
           { id: 'numeric_mkpknkjp', number: 60 },
           { id: 'formula_mkre3gx1', display_value: '40' },
+          { id: 'formula_mkxwd14p', display_value: '40' },
           { id: 'color_mkse3amh', label: 'EUR' }
         ]
       },
@@ -151,6 +178,7 @@ describe('computeFinancials', () => {
           { id: 'deal_value', number: 500 },
           { id: 'numeric_mkpknkjp', number: 300 },
           { id: 'formula_mkre3gx1', display_value: '200' },
+          { id: 'formula_mkxwd14p', display_value: '20' },
           { id: 'color_mkse3amh', label: 'RON' }
         ]
       }
@@ -161,6 +189,8 @@ describe('computeFinancials', () => {
     assert.ok(out.financialsByCurrency.RON);
     assert.strictEqual(out.financialsByCurrency.EUR.total_profit, 40);
     assert.strictEqual(out.financialsByCurrency.RON.total_profit, 200);
+    assert.strictEqual(out.financialsByCurrency.EUR.profitability, 40);
+    assert.strictEqual(out.financialsByCurrency.RON.profitability, 20);
   });
 });
 
