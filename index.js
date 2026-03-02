@@ -37,30 +37,70 @@ let settingsStore = {
 // ====================================================
 // UTILS & PARSERS (display / distribution; numeric/date use report-utils)
 // ====================================================
+const cleanDisplayString = (value) => {
+  const str = String(value ?? '').trim();
+  if (!str) return null;
+  const lowered = str.toLowerCase();
+  if (lowered === 'null' || lowered === 'undefined' || str === '[object Object]') return null;
+  return str;
+};
+
+const extractDisplayValue = (input, depth = 0) => {
+  if (input === null || input === undefined || depth > 3) return null;
+
+  if (typeof input === 'string' || typeof input === 'number' || typeof input === 'boolean') {
+    return cleanDisplayString(input);
+  }
+
+  if (Array.isArray(input)) {
+    const parts = input
+      .map(val => extractDisplayValue(val, depth + 1))
+      .filter(Boolean);
+    return parts.length ? parts.join(', ') : null;
+  }
+
+  if (typeof input === 'object') {
+    const preferredKeys = ['label', 'name', 'title', 'text', 'display_value', 'number', 'date', 'labels', 'value'];
+    for (const key of preferredKeys) {
+      if (Object.prototype.hasOwnProperty.call(input, key)) {
+        const extracted = extractDisplayValue(input[key], depth + 1);
+        if (extracted) return extracted;
+      }
+    }
+  }
+
+  return null;
+};
+
 const getColValue = (colValues, colId) => {
   const col = colValues.find(c => c.id === colId);
   if (!col) return "(necompletat)";
 
   // 1) preferă text dacă există
-  const t = (col.text ?? "").trim();
+  const t = cleanDisplayString(col.text);
   if (t) return t;
 
-  // 2) fallback pe value (formula/number/etc.)
+  // 2) typed fields fallback
+  for (const typedVal of [col.label, col.display_value, col.number, col.date]) {
+    const extracted = extractDisplayValue(typedVal);
+    if (extracted) return extracted;
+  }
+
+  // 3) fallback pe value (formula/number/etc.)
   const v = col.value;
   if (v === null || v === undefined || v === "") return "(necompletat)";
 
-  // uneori value e JSON string
+  // uneori value e JSON string; evităm serializarea brută a obiectelor
   try {
     const parsed = typeof v === "string" ? JSON.parse(v) : v;
-    // dacă găsești o cheie utilă, returneaz-o; altfel stringify
-    if (parsed && typeof parsed === "object") {
-      if (parsed.value !== undefined) return String(parsed.value);
-      if (parsed.text !== undefined) return String(parsed.text);
-    }
-    return String(parsed);
+    const extracted = extractDisplayValue(parsed);
+    if (extracted) return extracted;
   } catch {
-    return String(v).trim();
+    const extracted = extractDisplayValue(v);
+    if (extracted) return extracted;
   }
+
+  return "(necompletat)";
 };
 
 const getFallbackValue = (colValues, primaryId, fallbackId) => {
