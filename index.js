@@ -119,16 +119,30 @@ const normalizeBreakdownValue = (rawValue) => {
   return normalized;
 };
 
+const buildDateQueryParams = (dateColumnId, startDateStr, endDateStr) => (
+  `{ rules: [{ column_id: "${dateColumnId}", operator: between, compare_value: ["${startDateStr}", "${endDateStr}"] }] }`
+);
+
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
 // ====================================================
 // MONDAY API CLIENT
 // ====================================================
-async function fetchBoardItems(boardId, cursor = null, retries = 5) {
+async function fetchBoardItems(boardId, options = {}) {
+  const {
+    cursor = null,
+    retries = 5,
+    queryParams = null
+  } = options;
+
+  const itemsPageArgs = cursor
+    ? `limit: 250, cursor: "${cursor}"`
+    : (queryParams ? `limit: 250, query_params: ${queryParams}` : 'limit: 250');
+
   const query = `
-    query ($boardId: ID!, $cursor: String) {
-      boards(ids: [$boardId]) {
-        items_page(limit: 250, cursor: $cursor) {
+    query {
+      boards(ids: [${boardId}]) {
+        items_page(${itemsPageArgs}) {
           cursor
           items {
             id
@@ -152,7 +166,7 @@ async function fetchBoardItems(boardId, cursor = null, retries = 5) {
   for (let i = 0; i < retries; i++) {
     try {
       const res = await axios.post('https://api.monday.com/v2', 
-        { query, variables: { boardId, cursor } },
+        { query },
         { headers: { 'Authorization': MONDAY_API_TOKEN, 'API-Version': '2023-10' } }
       );
       if (res.data.errors) throw new Error(JSON.stringify(res.data.errors));
@@ -164,11 +178,11 @@ async function fetchBoardItems(boardId, cursor = null, retries = 5) {
   }
 }
 
-async function getAllItems(boardId) {
+async function getAllItems(boardId, queryParams = null) {
   let items = [];
   let cursor = null;
   do {
-    const page = await fetchBoardItems(boardId, cursor);
+    const page = await fetchBoardItems(boardId, { cursor, queryParams });
     if (page && page.items) items.push(...page.items);
     cursor = page ? page.cursor : null;
   } while (cursor);
@@ -242,11 +256,13 @@ async function buildReport(startDateStr, endDateStr, sources, options = {}) {
   };
 
   console.log('Fetching Solicitari...');
-  const rawSolicitari = await getAllItems(BOARD_SOLICITARI);
+  const solicitariQueryParams = buildDateQueryParams('deal_creation_date', startDateStr, endDateStr);
+  const rawSolicitari = await getAllItems(BOARD_SOLICITARI, solicitariQueryParams);
   const validSolicitari = processSolicitari(rawSolicitari);
 
   console.log('Fetching Comenzi...');
-  const rawComenzi = await getAllItems(BOARD_COMENZI);
+  const comenziQueryParams = buildDateQueryParams('deal_creation_date', startDateStr, endDateStr);
+  const rawComenzi = await getAllItems(BOARD_COMENZI, comenziQueryParams);
   const validComenzi = processComenzi(rawComenzi);
 
   const {
