@@ -60,13 +60,13 @@ const TableBreakdown = ({ title, data }) => (
     <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
       <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">{title}</h4>
     </div>
-    <div className="overflow-x-auto max-h-[300px]">
-      <table className="w-full text-sm text-left">
-        <thead className="text-[10px] text-slate-400 uppercase bg-slate-50/50 sticky top-0">
+    <div className="overflow-x-auto max-h-[300px] relative">
+      <table className="w-full text-sm text-left border-separate border-spacing-0">
+        <thead className="text-[10px] text-slate-400 uppercase">
           <tr>
-            <th className="px-4 py-2 font-bold">Valoare</th>
-            <th className="px-4 py-2 font-bold text-right">Nr</th>
-            <th className="px-4 py-2 font-bold text-right">%</th>
+            <th className="px-4 py-2 font-bold bg-slate-50 sticky top-0 z-10">Valoare</th>
+            <th className="px-4 py-2 font-bold text-right bg-slate-50 sticky top-0 z-10">Nr</th>
+            <th className="px-4 py-2 font-bold text-right bg-slate-50 sticky top-0 z-10">%</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
