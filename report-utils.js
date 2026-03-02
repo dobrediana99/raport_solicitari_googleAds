@@ -104,8 +104,8 @@ function isDateInRange(dateIsoStr, startDateStr, endDateStr, zone = 'Europe/Buch
 function computeFinancials(validComenzi, colIds = {}) {
   const {
     dealValue = 'deal_value',
-    pretFurnizor = 'numeric_mkpknkjp',
     profitFormula = 'formula_mkre3gx1',
+    profitabilityFormula = 'formula_mkxwd14p',
     monedaCursa = 'color_mkse3amh'
   } = colIds;
 
@@ -113,8 +113,8 @@ function computeFinancials(validComenzi, colIds = {}) {
   let total_profit_all = 0;
   let valid_price_count = 0;
   let valid_profit_count = 0;
-  let sum_profit_ponderat = 0;
-  let sum_pret_ponderat = 0;
+  let sum_profitability_formula = 0;
+  let count_profitability_formula = 0;
   let profit_from_formula_count = 0;
   let profit_from_fallback_count = 0;
   let profit_missing_count = 0;
@@ -124,18 +124,18 @@ function computeFinancials(validComenzi, colIds = {}) {
   validComenzi.forEach(item => {
     const colValues = item.column_values || [];
     const pret = getNumericColumnValue(colValues, dealValue);
-    const pretFurn = getNumericColumnValue(colValues, pretFurnizor);
-    let profit = getNumericColumnValue(colValues, profitFormula);
-    let profitSource = null;
+    const profit = getNumericColumnValue(colValues, profitFormula);
+    const profitability = getNumericColumnValue(colValues, profitabilityFormula);
+
     if (profit !== null) {
-      profitSource = 'formula';
       profit_from_formula_count++;
-    } else if (pret !== null && pretFurn !== null) {
-      profit = pret - pretFurn;
-      profitSource = 'fallback';
-      profit_from_fallback_count++;
     } else {
       profit_missing_count++;
+    }
+
+    if (profitability !== null) {
+      sum_profitability_formula += profitability;
+      count_profitability_formula++;
     }
 
     const currencyLabel = getStatusLabel(colValues, monedaCursa) || 'EUR';
@@ -148,10 +148,6 @@ function computeFinancials(validComenzi, colIds = {}) {
       total_profit_all += profit;
       valid_profit_count++;
     }
-    if (pret !== null && pret > 0 && profit !== null) {
-      sum_pret_ponderat += pret;
-      sum_profit_ponderat += profit;
-    }
 
     if (!byCurrency[currencyLabel]) {
       byCurrency[currencyLabel] = {
@@ -159,8 +155,8 @@ function computeFinancials(validComenzi, colIds = {}) {
         total_profit: 0,
         venue_count: 0,
         profit_count: 0,
-        sum_pret_ponderat: 0,
-        sum_profit_ponderat: 0
+        sum_profitability_formula: 0,
+        count_profitability_formula: 0
       };
     }
     const cur = byCurrency[currencyLabel];
@@ -172,9 +168,9 @@ function computeFinancials(validComenzi, colIds = {}) {
       cur.total_profit += profit;
       cur.profit_count++;
     }
-    if (pret !== null && pret > 0 && profit !== null) {
-      cur.sum_pret_ponderat += pret;
-      cur.sum_profit_ponderat += profit;
+    if (profitability !== null) {
+      cur.sum_profitability_formula += profitability;
+      cur.count_profitability_formula++;
     }
   });
 
@@ -183,11 +179,13 @@ function computeFinancials(validComenzi, colIds = {}) {
     avg_pret_client: valid_price_count > 0 ? parseFloat((total_pret_client / valid_price_count).toFixed(2)) : null,
     total_profit_all: total_profit_all,
     avg_profit: valid_profit_count > 0 ? parseFloat((total_profit_all / valid_profit_count).toFixed(2)) : null,
-    profitabilitate_ponderata: sum_pret_ponderat > 0
-      ? parseFloat((sum_profit_ponderat / sum_pret_ponderat * 100).toFixed(2))
+    // Business rule: use average of monday % formula column (formula_mkxwd14p).
+    profitabilitate_ponderata: count_profitability_formula > 0
+      ? parseFloat((sum_profitability_formula / count_profitability_formula).toFixed(2))
       : null,
     valid_price_count,
-    valid_profit_count
+    valid_profit_count,
+    valid_profitability_count: count_profitability_formula
   };
 
   const financialsByCurrency = {};
@@ -197,10 +195,11 @@ function computeFinancials(validComenzi, colIds = {}) {
       total_profit: cur.total_profit,
       avg_venue: cur.venue_count > 0 ? parseFloat((cur.total_venue / cur.venue_count).toFixed(2)) : null,
       avg_profit: cur.profit_count > 0 ? parseFloat((cur.total_profit / cur.profit_count).toFixed(2)) : null,
-      profitability: cur.sum_pret_ponderat > 0
-        ? parseFloat((cur.sum_profit_ponderat / cur.sum_pret_ponderat * 100).toFixed(2))
+      profitability: cur.count_profitability_formula > 0
+        ? parseFloat((cur.sum_profitability_formula / cur.count_profitability_formula).toFixed(2))
         : null,
-      item_count: cur.venue_count
+      item_count: cur.venue_count,
+      profitability_count: cur.count_profitability_formula
     };
   }
 

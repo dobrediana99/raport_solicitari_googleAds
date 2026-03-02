@@ -368,9 +368,9 @@ export default function App() {
                   color="emerald" 
                 />
                 <StatCard 
-                  label="Profitabilitate Ponderată" 
+                  label="Profitabilitate Medie" 
                   value={formatPercentOrDash(report.comenzi.financials.profitabilitate_ponderata)} 
-                  subValue={report.comenzi.financials.profitabilitate_ponderata == null && report.comenzi.financials.valid_profit_count === 0 ? 'Insuficiente date pentru calcul' : 'SUM(Profit) / SUM(Preț)'}
+                  subValue={report.comenzi.financials.profitabilitate_ponderata == null && report.comenzi.financials.valid_profitability_count === 0 ? 'Insuficiente date pentru calcul' : 'Media coloanei % (formula_mkxwd14p)'}
                   color="amber" 
                 />
               </div>

@@ -316,7 +316,7 @@ async function generateExcelBuffer(reportData) {
   sheetCom.addRow([`Venit Mediu/Cursa (${currencyNote})`, fin.avg_pret_client]);
   sheetCom.addRow([`Profit Total (${currencyNote})`, fin.total_profit_all]);
   sheetCom.addRow([`Profit Mediu/Cursa (${currencyNote})`, fin.avg_profit]);
-  sheetCom.addRow(['Profitabilitate Ponderata (%)', fin.profitabilitate_ponderata]);
+  sheetCom.addRow(['Profitabilitate Medie (%)', fin.profitabilitate_ponderata]);
   let nextRow = 9;
   if (reportData.comenzi.financialsByCurrency && Object.keys(reportData.comenzi.financialsByCurrency).length > 0) {
     sheetCom.addRow([]);
