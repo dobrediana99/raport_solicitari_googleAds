@@ -5,6 +5,7 @@ const cron = require('node-cron');
 const nodemailer = require('nodemailer');
 const ExcelJS = require('exceljs');
 const { DateTime } = require('luxon');
+const reportUtils = require('./report-utils');
 
 // ====================================================
 // HARDCODED ENV VARS
@@ -34,65 +35,15 @@ let settingsStore = {
 };
 
 // ====================================================
-// UTILS & PARSERS
+// UTILS & PARSERS (display / distribution; numeric/date use report-utils)
 // ====================================================
-const parseNumberLoose = (val) => {
-  if (val === null || val === undefined || val === '') return null;
-  let str = String(val).replace(/\s/g, '').replace(/[€$£%\xa0]/g, '');
-  if (str.includes(',') && str.includes('.')) {
-    if (str.indexOf(',') < str.indexOf('.')) str = str.replace(/,/g, '');
-    else str = str.replace(/\./g, '').replace(',', '.');
-  } else if (str.includes(',')) {
-    str = str.replace(',', '.');
-  }
-  const num = parseFloat(str);
-  return isNaN(num) ? null : num;
-};
-
-const safeJsonParse = (value) => {
-  if (value === null || value === undefined || value === '') return null;
-  if (typeof value !== 'string') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-};
-
-const getColumnById = (colValues, colId) => colValues.find(c => c.id === colId);
-
-const parseDateTextToIsoDate = (text) => {
-  const normalized = String(text || '').trim();
-  if (!normalized) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized;
-  if (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}/.test(normalized)) return normalized.slice(0, 10);
-  return null;
-};
-
-const extractDate = (colValues, colId) => {
-  const col = getColumnById(colValues, colId);
-  if (!col) return null;
-
-  // Prefer typed date payload from monday.
-  const parsed = safeJsonParse(col.value);
-  if (parsed && typeof parsed === 'object' && parsed.date) return parsed.date;
-  if (col.date) return col.date;
-  return parseDateTextToIsoDate(col.text);
-};
-
 const getColValue = (colValues, colId) => {
-  const col = getColumnById(colValues, colId);
+  const col = colValues.find(c => c.id === colId);
   if (!col) return "(necompletat)";
 
   // 1) preferă text dacă există
   const t = (col.text ?? "").trim();
   if (t) return t;
-
-  // 1.1) typed monday fields
-  if (col.label !== undefined && col.label !== null && String(col.label).trim()) return String(col.label).trim();
-  if (col.display_value !== undefined && col.display_value !== null && String(col.display_value).trim()) return String(col.display_value).trim();
-  if (col.number !== undefined && col.number !== null && String(col.number).trim()) return String(col.number).trim();
-  if (col.date !== undefined && col.date !== null && String(col.date).trim()) return String(col.date).trim();
 
   // 2) fallback pe value (formula/number/etc.)
   const v = col.value;
@@ -110,36 +61,6 @@ const getColValue = (colValues, colId) => {
   } catch {
     return String(v).trim();
   }
-};
-
-const getNumericColumnValue = (colValues, colId) => {
-  const col = getColumnById(colValues, colId);
-  if (!col) return null;
-
-  const numericFromTypedFields = [
-    col.display_value,
-    col.number,
-    col.text
-  ];
-
-  for (const candidate of numericFromTypedFields) {
-    const parsed = parseNumberLoose(candidate);
-    if (parsed !== null) return parsed;
-  }
-
-  const parsedValue = safeJsonParse(col.value);
-  if (typeof parsedValue === 'number' || typeof parsedValue === 'string') {
-    return parseNumberLoose(parsedValue);
-  }
-
-  if (parsedValue && typeof parsedValue === 'object') {
-    for (const key of ['number', 'value', 'text', 'display_value']) {
-      const parsed = parseNumberLoose(parsedValue[key]);
-      if (parsed !== null) return parsed;
-    }
-  }
-
-  return parseNumberLoose(col.value);
 };
 
 const getFallbackValue = (colValues, primaryId, fallbackId) => {
@@ -207,39 +128,47 @@ async function getAllItems(boardId) {
 // ====================================================
 // REPORT GENERATOR
 // ====================================================
-async function buildReport(startDateStr, endDateStr, sourcesSolicitari = [], sourcesComenzi = []) {
-  const normalizeSources = (sources) => (
-    Array.isArray(sources)
-      ? sources.map(s => String(s).toLowerCase().trim()).filter(Boolean)
-      : []
-  );
-  const allowedSolicitariSources = normalizeSources(sourcesSolicitari);
-  const allowedComenziSources = normalizeSources(sourcesComenzi);
+async function buildReport(startDateStr, endDateStr, sources, options = {}) {
+  const {
+    sourcesSolicitari = sources,
+    sourcesComenzi = null
+  } = options;
+  const allowedSolicitari = (sourcesSolicitari || sources || []).map(s => String(s).toLowerCase().trim()).filter(Boolean);
+  const allowedComenzi = Array.isArray(sourcesComenzi) && sourcesComenzi.length > 0
+    ? sourcesComenzi.map(s => String(s).toLowerCase().trim()).filter(Boolean)
+    : null;
 
   const start = DateTime.fromISO(startDateStr, { zone: TZ }).startOf('day');
   const end = DateTime.fromISO(endDateStr, { zone: TZ }).endOf('day');
 
-  let counters = { excluded_missing_date: 0, excluded_invalid_date: 0, excluded_source: 0 };
-  
-  const processItems = (items, dateColId, sourceColId, options = {}) => {
-    const {
-      allowedSources = [],
-      applySourceFilter = true
-    } = options;
+  const counters = { excluded_missing_date: 0, excluded_invalid_date: 0, excluded_source: 0 };
 
-    const shouldFilterBySource = applySourceFilter && allowedSources.length > 0;
-
+  const processSolicitari = (items) => {
     return items.filter(item => {
-      const dateStr = extractDate(item.column_values, dateColId);
+      const dateStr = reportUtils.extractDate(item.column_values, 'deal_creation_date', { zone: TZ });
       if (!dateStr) { counters.excluded_missing_date++; return false; }
-      
       const itemDate = DateTime.fromISO(dateStr, { zone: TZ });
       if (!itemDate.isValid) { counters.excluded_invalid_date++; return false; }
       if (itemDate < start || itemDate > end) return false;
+      const source = getColValue(item.column_values, 'color_mkpv6sj4');
+      if (source === "(necompletat)" || !allowedSolicitari.length || !allowedSolicitari.includes(source.toLowerCase())) {
+        counters.excluded_source++;
+        return false;
+      }
+      return true;
+    });
+  };
 
-      if (shouldFilterBySource) {
-        const source = getColValue(item.column_values, sourceColId);
-        if (source === "(necompletat)" || !allowedSources.includes(source.toLowerCase())) {
+  const processComenzi = (items) => {
+    return items.filter(item => {
+      const dateStr = reportUtils.extractDate(item.column_values, 'deal_creation_date', { zone: TZ });
+      if (!dateStr) { counters.excluded_missing_date++; return false; }
+      const itemDate = DateTime.fromISO(dateStr, { zone: TZ });
+      if (!itemDate.isValid) { counters.excluded_invalid_date++; return false; }
+      if (itemDate < start || itemDate > end) return false;
+      if (allowedComenzi !== null) {
+        const source = getColValue(item.column_values, 'color_mktcvtpz');
+        if (source === "(necompletat)" || !allowedComenzi.includes(source.toLowerCase())) {
           counters.excluded_source++;
           return false;
         }
@@ -258,60 +187,32 @@ async function buildReport(startDateStr, endDateStr, sourcesSolicitari = [], sou
     return Object.keys(counts).map(val => ({
       valoare: val,
       nr: counts[val],
-      procent: total > 0 ? (counts[val] / total * 100).toFixed(1) : "0.0"
+      procent: total > 0 ? (counts[val] / total * 100).toFixed(1) : '0.0'
     })).sort((a, b) => b.nr - a.nr);
   };
 
-  console.log(`Fetching Solicitari...`);
+  console.log('Fetching Solicitari...');
   const rawSolicitari = await getAllItems(BOARD_SOLICITARI);
-  const validSolicitari = processItems(rawSolicitari, 'deal_creation_date', 'color_mkpv6sj4', {
-    allowedSources: allowedSolicitariSources,
-    applySourceFilter: true
-  });
+  const validSolicitari = processSolicitari(rawSolicitari);
 
-  console.log(`Fetching Comenzi...`);
+  console.log('Fetching Comenzi...');
   const rawComenzi = await getAllItems(BOARD_COMENZI);
-  const validComenzi = processItems(rawComenzi, 'deal_creation_date', 'color_mktcvtpz', {
-    allowedSources: allowedComenziSources,
-    applySourceFilter: allowedComenziSources.length > 0
-  });
+  const validComenzi = processComenzi(rawComenzi);
 
-  // Aggregations Comenzi
-  let total_pret_client = 0, total_profit_all = 0;
-  let valid_price_count = 0, valid_profit_count = 0;
-  let sum_profit_ponderat = 0, sum_pret_ponderat = 0;
-  let profit_from_formula_count = 0, profit_from_fallback_count = 0, profit_missing_count = 0;
-
-  validComenzi.forEach(item => {
-    const pret = getNumericColumnValue(item.column_values, 'deal_value');
-    const pretFurnizor = getNumericColumnValue(item.column_values, 'numeric_mkpknkjp');
-    const profitFormula = getNumericColumnValue(item.column_values, 'formula_mkre3gx1');
-    let profit = profitFormula;
-
-    if (profitFormula !== null) {
-      profit_from_formula_count++;
-    } else if (pret !== null && pretFurnizor !== null) {
-      profit = pret - pretFurnizor;
-      profit_from_fallback_count++;
-    } else {
-      profit_missing_count++;
-    }
-
-    if (pret !== null) { total_pret_client += pret; valid_price_count++; }
-    if (profit !== null) { total_profit_all += profit; valid_profit_count++; }
-    
-    if (pret !== null && pret > 0 && profit !== null) {
-      sum_pret_ponderat += pret;
-      sum_profit_ponderat += profit;
-    }
-  });
+  const {
+    financials,
+    financialsByCurrency,
+    mixedCurrencies,
+    profit_from_formula_count,
+    profit_from_fallback_count,
+    profit_missing_count
+  } = reportUtils.computeFinancials(validComenzi);
 
   return {
     metadata: {
       period: { start: startDateStr, end: endDateStr },
-      sources: allowedSolicitariSources,
-      sources_solicitari: allowedSolicitariSources,
-      sources_comenzi: allowedComenziSources,
+      sources: allowedSolicitari,
+      sourcesComenzi: allowedComenzi,
       timezone: TZ,
       excluded_missing_date: counters.excluded_missing_date,
       excluded_invalid_date: counters.excluded_invalid_date,
@@ -334,17 +235,13 @@ async function buildReport(startDateStr, endDateStr, sourcesSolicitari = [], sou
     comenzi: {
       n_total: validComenzi.length,
       financials: {
-        total_pret_client,
-        avg_pret_client: valid_price_count > 0 ? parseFloat((total_pret_client / valid_price_count).toFixed(2)) : null,
-        total_profit_all,
-        avg_profit: valid_profit_count > 0 ? parseFloat((total_profit_all / valid_profit_count).toFixed(2)) : null,
-        profitabilitate_ponderata: sum_pret_ponderat > 0 ? parseFloat((sum_profit_ponderat / sum_pret_ponderat * 100).toFixed(2)) : null,
-        valid_price_count,
-        valid_profit_count,
-        profit_from_formula_count,
-        profit_from_fallback_count,
-        profit_missing_count
+        ...financials,
+        mixedCurrencies
       },
+      financialsByCurrency,
+      profit_from_formula_count,
+      profit_from_fallback_count,
+      profit_missing_count,
       breakdowns: {
         dep: calcDistribution(validComenzi, i => getColValue(i.column_values, 'color_mktcr7h6')),
         moneda_cursa: calcDistribution(validComenzi, i => getColValue(i.column_values, 'color_mkse3amh')),
@@ -411,15 +308,27 @@ async function generateExcelBuffer(reportData) {
   const sheetCom = workbook.addWorksheet('Comenzi');
   sheetCom.columns = [{ width: 35 }, { width: 15 }, { width: 15 }];
   const fin = reportData.comenzi.financials;
+  const currencyNote = fin.mixedCurrencies ? '(monede mixte – vezi per monedă)' : '€';
   sheetCom.addRow(['METRICI FINANCIARE', 'VALOARE']);
   sheetCom.getRow(1).font = { bold: true };
   sheetCom.addRow(['Total Comenzi', reportData.comenzi.n_total]);
-  sheetCom.addRow(['Venit Total (€)', fin.total_pret_client]);
-  sheetCom.addRow(['Venit Mediu/Cursa (€)', fin.avg_pret_client]);
-  sheetCom.addRow(['Profit Total (€)', fin.total_profit_all]);
-  sheetCom.addRow(['Profit Mediu/Cursa (€)', fin.avg_profit]);
+  sheetCom.addRow([`Venit Total (${currencyNote})`, fin.total_pret_client]);
+  sheetCom.addRow([`Venit Mediu/Cursa (${currencyNote})`, fin.avg_pret_client]);
+  sheetCom.addRow([`Profit Total (${currencyNote})`, fin.total_profit_all]);
+  sheetCom.addRow([`Profit Mediu/Cursa (${currencyNote})`, fin.avg_profit]);
   sheetCom.addRow(['Profitabilitate Ponderata (%)', fin.profitabilitate_ponderata]);
-  addBreakdownTables(sheetCom, reportData.comenzi.breakdowns, 9);
+  let nextRow = 9;
+  if (reportData.comenzi.financialsByCurrency && Object.keys(reportData.comenzi.financialsByCurrency).length > 0) {
+    sheetCom.addRow([]);
+    sheetCom.addRow(['PER MONEDĂ']);
+    for (const [curr, data] of Object.entries(reportData.comenzi.financialsByCurrency)) {
+      sheetCom.addRow([`${curr} – Venit`, data.total_venue]);
+      sheetCom.addRow([`${curr} – Profit`, data.total_profit]);
+      sheetCom.addRow([`${curr} – Profitabilitate %`, data.profitability]);
+    }
+    nextRow += 2 + 3 * Object.keys(reportData.comenzi.financialsByCurrency).length;
+  }
+  addBreakdownTables(sheetCom, reportData.comenzi.breakdowns, nextRow);
 
   return await workbook.xlsx.writeBuffer();
 }
@@ -438,14 +347,18 @@ async function sendReportEmail(reportData, excelBuffer, recipients, subjectTempl
   const { start, end } = reportData.metadata.period;
   const subject = subjectTemplate.replace('{start}', start).replace('{end}', end);
 
+  const fin = reportData.comenzi.financials;
+  const profitLabel = fin.mixedCurrencies ? 'Profit Total (monede mixte)' : 'Profit Total (€)';
+  const profitVal = fin.total_profit_all != null ? Number(fin.total_profit_all).toLocaleString() : '—';
+  const profPondVal = fin.profitabilitate_ponderata != null ? `${fin.profitabilitate_ponderata}%` : '—';
   const html = `
     <h2>Raport Solicitări & Comenzi</h2>
     <p>Perioada: <b>${start}</b> — <b>${end}</b></p>
     <ul>
       <li>Total Solicitări: <b>${reportData.solicitari.n_total}</b></li>
       <li>Total Comenzi/Curse: <b>${reportData.comenzi.n_total}</b></li>
-      <li>Profit Total: <b>${reportData.comenzi.financials.total_profit_all.toLocaleString()} €</b></li>
-      <li>Profitabilitate: <b>${reportData.comenzi.financials.profitabilitate_ponderata}%</b></li>
+      <li>${profitLabel}: <b>${profitVal}${fin.mixedCurrencies ? '' : ' €'}</b></li>
+      <li>Profitabilitate: <b>${profPondVal}</b></li>
     </ul>
     <p><a href="${REPORT_BASE_URL}">Accesează Dashboard-ul Live</a></p>
     <p>Găsești raportul detaliat atașat în format Excel.</p>
@@ -461,26 +374,42 @@ async function sendReportEmail(reportData, excelBuffer, recipients, subjectTempl
 }
 
 // ====================================================
-// SCHEDULER
+// SCHEDULER (dynamic from settingsStore)
 // ====================================================
-cron.schedule('0 8 * * 1', async () => {
-  console.log(`[Cron] Running weekly job...`);
-  if (!settingsStore.enabled) {
-    console.log(`[Cron] Job is disabled in settings. Skipping.`);
+let scheduledJob = null;
+
+function scheduleWeeklyJob(store) {
+  if (scheduledJob) {
+    scheduledJob.stop();
+    scheduledJob = null;
+  }
+  if (!store.enabled) {
+    console.log('[Cron] Scheduler disabled in settings.');
     return;
   }
-  try {
-    const end = DateTime.now().setZone(TZ).minus({ days: 1 }).toFormat('yyyy-MM-dd');
-    const start = DateTime.now().setZone(TZ).minus({ days: 7 }).toFormat('yyyy-MM-dd');
-    
-    const report = await buildReport(start, end, settingsStore.sources, []);
-    const buffer = await generateExcelBuffer(report);
-    await sendReportEmail(report, buffer, settingsStore.recipients, settingsStore.subjectTemplate);
-    console.log(`[Cron] Successfully sent report for ${start} - ${end}`);
-  } catch (err) {
-    console.error(`[Cron] Error executing job:`, err);
-  }
-}, { timezone: TZ });
+  const minute = Math.max(0, Math.min(59, store.minute ?? 0));
+  const hour = Math.max(0, Math.min(23, store.hour ?? 8));
+  const dayOfWeek = Math.max(0, Math.min(7, store.dayOfWeek ?? 1));
+  // node-cron: minute hour dayOfMonth month dayOfWeek (0-7, 0 and 7 = Sunday)
+  const cronExpr = `${minute} ${hour} * * ${dayOfWeek}`;
+  scheduledJob = cron.schedule(cronExpr, async () => {
+    console.log('[Cron] Running scheduled job...');
+    try {
+      const end = DateTime.now().setZone(TZ).minus({ days: 1 }).toFormat('yyyy-MM-dd');
+      const start = DateTime.now().setZone(TZ).minus({ days: 7 }).toFormat('yyyy-MM-dd');
+      const report = await buildReport(start, end, store.sources || [], {
+        sourcesSolicitari: store.sources,
+        sourcesComenzi: store.sourcesComenzi
+      });
+      const buffer = await generateExcelBuffer(report);
+      await sendReportEmail(report, buffer, store.recipients || [], store.subjectTemplate || 'Raport');
+      console.log(`[Cron] Successfully sent report for ${start} - ${end}`);
+    } catch (err) {
+      console.error('[Cron] Error executing job:', err);
+    }
+  }, { timezone: TZ });
+  console.log(`[Cron] Scheduled: ${cronExpr} (${TZ})`);
+}
 
 // ====================================================
 // EXPRESS APP & ROUTES
@@ -492,11 +421,10 @@ app.use(express.json());
 app.post('/api/report', async (req, res) => {
   try {
     const { startDate, endDate, sources, sourcesSolicitari, sourcesComenzi } = req.body;
-    const resolvedSourcesSolicitari = Array.isArray(sourcesSolicitari)
-      ? sourcesSolicitari
-      : (Array.isArray(sources) ? sources : []);
-    const resolvedSourcesComenzi = Array.isArray(sourcesComenzi) ? sourcesComenzi : [];
-    const report = await buildReport(startDate, endDate, resolvedSourcesSolicitari, resolvedSourcesComenzi);
+    const report = await buildReport(startDate, endDate, sources || [], {
+      sourcesSolicitari: sourcesSolicitari ?? sources,
+      sourcesComenzi: sourcesComenzi
+    });
     res.json(report);
   } catch (error) {
     console.error(error);
@@ -507,11 +435,10 @@ app.post('/api/report', async (req, res) => {
 app.post('/api/export/excel', async (req, res) => {
   try {
     const { startDate, endDate, sources, sourcesSolicitari, sourcesComenzi } = req.body;
-    const resolvedSourcesSolicitari = Array.isArray(sourcesSolicitari)
-      ? sourcesSolicitari
-      : (Array.isArray(sources) ? sources : []);
-    const resolvedSourcesComenzi = Array.isArray(sourcesComenzi) ? sourcesComenzi : [];
-    const report = await buildReport(startDate, endDate, resolvedSourcesSolicitari, resolvedSourcesComenzi);
+    const report = await buildReport(startDate, endDate, sources || [], {
+      sourcesSolicitari: sourcesSolicitari ?? sources,
+      sourcesComenzi: sourcesComenzi
+    });
     const buffer = await generateExcelBuffer(report);
     
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -527,6 +454,7 @@ app.get('/api/settings', (req, res) => res.json(settingsStore));
 
 app.post('/api/settings', (req, res) => {
   settingsStore = { ...settingsStore, ...req.body };
+  scheduleWeeklyJob(settingsStore);
   res.json({ success: true, settings: settingsStore });
 });
 
@@ -534,8 +462,10 @@ app.post('/api/send-test', async (req, res) => {
   try {
     const end = DateTime.now().setZone(TZ).minus({ days: 1 }).toFormat('yyyy-MM-dd');
     const start = DateTime.now().setZone(TZ).minus({ days: 7 }).toFormat('yyyy-MM-dd');
-    
-    const report = await buildReport(start, end, settingsStore.sources, []);
+    const report = await buildReport(start, end, settingsStore.sources || [], {
+      sourcesSolicitari: settingsStore.sources,
+      sourcesComenzi: settingsStore.sourcesComenzi
+    });
     const buffer = await generateExcelBuffer(report);
     await sendReportEmail(report, buffer, settingsStore.recipients, settingsStore.subjectTemplate);
     
@@ -553,4 +483,5 @@ app.get("/", (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server started on http://localhost:${PORT}`);
   console.log(`Timezone: ${TZ}`);
+  scheduleWeeklyJob(settingsStore);
 });

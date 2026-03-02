@@ -16,6 +16,22 @@ import {
 const SOURCES_ALLOWED = ['website', 'telefon fix', 'newsletter'];
 const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
+/** Format numeric or null: null/undefined => "—", else number with optional currency. No || 0 masking. */
+function formatCurrencyOrDash(value, currencyLabel = '€') {
+  if (value === null || value === undefined || (typeof value === 'number' && isNaN(value))) return '—';
+  const n = Number(value);
+  if (isNaN(n)) return '—';
+  return currencyLabel ? `${n.toLocaleString()} ${currencyLabel}` : n.toLocaleString();
+}
+
+/** Format percent or null: null/undefined => "—", else "X.X%". */
+function formatPercentOrDash(value) {
+  if (value === null || value === undefined || (typeof value === 'number' && isNaN(value))) return '—';
+  const n = Number(value);
+  if (isNaN(n)) return '—';
+  return `${n.toFixed(1)}%`;
+}
+
 // ====================================================
 // COMPONENTE UI
 // ====================================================
@@ -84,52 +100,36 @@ export default function App() {
   const [filters, setFilters] = useState({
     startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
-    sourcesSolicitari: [...SOURCES_ALLOWED],
+    sources: [...SOURCES_ALLOWED],
     sourcesComenzi: []
   });
 
-  // State pentru setări (va fi salvat via API)
+  // State pentru setări (încărcat din API la deschidere tab)
   const [settings, setSettings] = useState({
     enabled: true,
     dayOfWeek: 1,
     hour: 8,
+    minute: 0,
     recipients: ["management@crystal-logistics-services.com"],
     subjectTemplate: "Raport Solicitări & Comenzi – {start} – {end}"
   });
-
-  const formatCurrencyOrDash = (value, suffix = '€') => (
-    value === null || value === undefined
-      ? '—'
-      : `${Number(value).toLocaleString('ro-RO', { maximumFractionDigits: 2 })} ${suffix}`
-  );
-
-  const formatPercentOrDash = (value) => (
-    value === null || value === undefined
-      ? '—'
-      : `${Number(value).toFixed(1)}%`
-  );
-
-  const formatAvgCurrency = (value, count, suffix = '€') => (
-    value === null || value === undefined
-      ? `Avg: — / cursă (N=${count ?? 0})`
-      : `Avg: ${Number(value).toFixed(0)} ${suffix} / cursă (N=${count ?? 0})`
-  );
-
-  const buildReportPayload = () => ({
-    startDate: filters.startDate,
-    endDate: filters.endDate,
-    sourcesSolicitari: filters.sourcesSolicitari,
-    sourcesComenzi: filters.sourcesComenzi
-  });
+  const [settingsSaveStatus, setSettingsSaveStatus] = useState(null);
 
   const generateReport = async () => {
     setLoading(true);
     setError(null);
     try {
+      const payload = {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        sources: filters.sources,
+        sourcesSolicitari: filters.sources,
+        sourcesComenzi: filters.sourcesComenzi ?? []
+      };
       const response = await fetch('/api/report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildReportPayload())
+        body: JSON.stringify(payload)
       });
       
       if (!response.ok) throw new Error("Eroare la comunicarea cu serverul API.");
@@ -147,10 +147,17 @@ export default function App() {
   const exportExcel = async () => {
   setExporting(true);
   try {
+    const payload = {
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+      sources: filters.sources,
+      sourcesSolicitari: filters.sources,
+      sourcesComenzi: filters.sourcesComenzi ?? []
+    };
     const response = await fetch("/api/export/excel", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildReportPayload()),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -183,6 +190,32 @@ export default function App() {
   useEffect(() => {
     generateReport();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'settings') {
+      fetch('/api/settings')
+        .then(r => r.ok ? r.json() : Promise.reject(new Error('Eroare la încărcare setări')))
+        .then(data => setSettings(prev => ({ ...prev, ...data })))
+        .catch(() => setSettingsSaveStatus('error_load'));
+    }
+  }, [activeTab]);
+
+  const saveSettings = async () => {
+    setSettingsSaveStatus(null);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+      if (!res.ok) throw new Error('Salvare eșuată');
+      const data = await res.json();
+      setSettings(data.settings || settings);
+      setSettingsSaveStatus('success');
+    } catch (err) {
+      setSettingsSaveStatus('error');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
@@ -275,9 +308,9 @@ export default function App() {
                   <h2 className="text-2xl font-black text-slate-800 tracking-tight">Solicitări Lead-uri</h2>
                 </div>
                 <div className="flex items-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-white px-4 py-2 rounded-full border border-slate-200">
-                  <div className="flex items-center gap-1 text-rose-500"><AlertCircle className="w-3 h-3" /> Excluse (Dată): {report.metadata.excluded_missing_date}</div>
-                  <div className="flex items-center gap-1 text-violet-500"><AlertCircle className="w-3 h-3" /> Excluse (Dată invalidă): {report.metadata.excluded_invalid_date ?? 0}</div>
-                  <div className="flex items-center gap-1 text-amber-500"><AlertCircle className="w-3 h-3" /> Excluse (Sursă): {report.metadata.excluded_source}</div>
+                  <div className="flex items-center gap-1 text-rose-500"><AlertCircle className="w-3 h-3" /> Excluse (Lipsă dată): {report.metadata.excluded_missing_date ?? 0}</div>
+                  <div className="flex items-center gap-1 text-amber-500"><AlertCircle className="w-3 h-3" /> Excluse (Dată invalidă): {report.metadata.excluded_invalid_date ?? 0}</div>
+                  <div className="flex items-center gap-1 text-amber-600"><AlertCircle className="w-3 h-3" /> Excluse (Sursă): {report.metadata.excluded_source ?? 0}</div>
                 </div>
               </div>
 
@@ -324,27 +357,38 @@ export default function App() {
                 <StatCard label="Total Comenzi" value={report.comenzi.n_total} icon={ShoppingCart} color="emerald" />
                 <StatCard 
                   label="Venit Total" 
-                  value={formatCurrencyOrDash(report.comenzi.financials.total_pret_client)} 
-                  subValue={formatAvgCurrency(report.comenzi.financials.avg_pret_client, report.comenzi.financials.valid_price_count)}
+                  value={formatCurrencyOrDash(report.comenzi.financials.total_pret_client, report.comenzi.financials.mixedCurrencies ? '' : '€')} 
+                  subValue={report.comenzi.financials.valid_price_count != null ? `Avg: ${formatCurrencyOrDash(report.comenzi.financials.avg_pret_client, '€')} / cursă (n=${report.comenzi.financials.valid_price_count})` : '—'}
                   color="emerald" 
                 />
                 <StatCard 
                   label="Profit Total" 
-                  value={formatCurrencyOrDash(report.comenzi.financials.total_profit_all)} 
-                  subValue={formatAvgCurrency(report.comenzi.financials.avg_profit, report.comenzi.financials.valid_profit_count)}
+                  value={formatCurrencyOrDash(report.comenzi.financials.total_profit_all, report.comenzi.financials.mixedCurrencies ? '' : '€')} 
+                  subValue={report.comenzi.financials.valid_profit_count != null ? `Avg: ${formatCurrencyOrDash(report.comenzi.financials.avg_profit, '€')} / cursă (n=${report.comenzi.financials.valid_profit_count})` : '—'}
                   color="emerald" 
                 />
                 <StatCard 
                   label="Profitabilitate Ponderată" 
                   value={formatPercentOrDash(report.comenzi.financials.profitabilitate_ponderata)} 
-                  subValue={
-                    report.comenzi.financials.profitabilitate_ponderata === null || report.comenzi.financials.profitabilitate_ponderata === undefined
-                      ? "Insuficiente date pentru calcul"
-                      : "SUM(Profit) / SUM(Preț)"
-                  }
+                  subValue={report.comenzi.financials.profitabilitate_ponderata == null && report.comenzi.financials.valid_profit_count === 0 ? 'Insuficiente date pentru calcul' : 'SUM(Profit) / SUM(Preț)'}
                   color="amber" 
                 />
               </div>
+              {report.comenzi.financials?.mixedCurrencies && report.comenzi.financialsByCurrency && Object.keys(report.comenzi.financialsByCurrency).length > 0 && (
+                <div className="mb-8 p-4 bg-slate-100 rounded-xl border border-slate-200">
+                  <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">KPI per monedă</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {Object.entries(report.comenzi.financialsByCurrency).map(([currency, data]) => (
+                      <div key={currency} className="bg-white p-4 rounded-lg border border-slate-200">
+                        <p className="text-xs font-black text-slate-500 uppercase mb-2">{currency}</p>
+                        <p className="text-sm">Venit: {formatCurrencyOrDash(data.total_venue, currency)}</p>
+                        <p className="text-sm">Profit: {formatCurrencyOrDash(data.total_profit, currency)}</p>
+                        <p className="text-sm">Profitabilitate: {formatPercentOrDash(data.profitability)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
@@ -451,7 +495,17 @@ export default function App() {
                       type="number" 
                       min="0" max="23"
                       value={settings.hour}
-                      onChange={e => setSettings({...settings, hour: parseInt(e.target.value)})}
+                      onChange={e => setSettings({...settings, hour: parseInt(e.target.value, 10)})}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Minut</label>
+                    <input 
+                      type="number" 
+                      min="0" max="59"
+                      value={settings.minute ?? 0}
+                      onChange={e => setSettings({...settings, minute: parseInt(e.target.value, 10)})}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                     />
                   </div>
@@ -484,8 +538,14 @@ export default function App() {
                 />
               </div>
 
+              {settingsSaveStatus === 'success' && <p className="text-sm font-bold text-emerald-600">Configurație salvată.</p>}
+              {settingsSaveStatus === 'error' && <p className="text-sm font-bold text-rose-600">Eroare la salvare.</p>}
+              {settingsSaveStatus === 'error_load' && <p className="text-sm font-bold text-amber-600">Nu s-au putut încărca setările.</p>}
               <div className="flex gap-4">
-                <button className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-100">
+                <button 
+                  onClick={saveSettings}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-100"
+                >
                   <Save className="w-5 h-5" /> Salvează Configurația
                 </button>
                 <button 
