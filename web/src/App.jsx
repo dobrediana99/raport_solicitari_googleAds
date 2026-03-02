@@ -16,23 +16,6 @@ import {
 const SOURCES_ALLOWED = ['website', 'telefon fix', 'newsletter'];
 const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
-/**
- * Parsare numerică robustă conform cerinței (punctul 4)
- */
-const parseNumberLoose = (val) => {
-  if (val === null || val === undefined) return null;
-  let str = String(val).replace(/\s/g, '').replace(/[€$£%]/g, '');
-  // Verificăm dacă avem format european (1.234,56) sau US (1,234.56)
-  if (str.includes(',') && str.includes('.')) {
-    if (str.indexOf(',') < str.indexOf('.')) str = str.replace(/,/g, '');
-    else str = str.replace(/\./g, '').replace(',', '.');
-  } else if (str.includes(',')) {
-    str = str.replace(',', '.');
-  }
-  const num = parseFloat(str);
-  return isNaN(num) ? null : num;
-};
-
 // ====================================================
 // COMPONENTE UI
 // ====================================================
@@ -101,7 +84,8 @@ export default function App() {
   const [filters, setFilters] = useState({
     startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
-    sources: [...SOURCES_ALLOWED]
+    sourcesSolicitari: [...SOURCES_ALLOWED],
+    sourcesComenzi: []
   });
 
   // State pentru setări (va fi salvat via API)
@@ -113,6 +97,31 @@ export default function App() {
     subjectTemplate: "Raport Solicitări & Comenzi – {start} – {end}"
   });
 
+  const formatCurrencyOrDash = (value, suffix = '€') => (
+    value === null || value === undefined
+      ? '—'
+      : `${Number(value).toLocaleString('ro-RO', { maximumFractionDigits: 2 })} ${suffix}`
+  );
+
+  const formatPercentOrDash = (value) => (
+    value === null || value === undefined
+      ? '—'
+      : `${Number(value).toFixed(1)}%`
+  );
+
+  const formatAvgCurrency = (value, count, suffix = '€') => (
+    value === null || value === undefined
+      ? `Avg: — / cursă (N=${count ?? 0})`
+      : `Avg: ${Number(value).toFixed(0)} ${suffix} / cursă (N=${count ?? 0})`
+  );
+
+  const buildReportPayload = () => ({
+    startDate: filters.startDate,
+    endDate: filters.endDate,
+    sourcesSolicitari: filters.sourcesSolicitari,
+    sourcesComenzi: filters.sourcesComenzi
+  });
+
   const generateReport = async () => {
     setLoading(true);
     setError(null);
@@ -120,7 +129,7 @@ export default function App() {
       const response = await fetch('/api/report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(filters)
+        body: JSON.stringify(buildReportPayload())
       });
       
       if (!response.ok) throw new Error("Eroare la comunicarea cu serverul API.");
@@ -141,7 +150,7 @@ export default function App() {
     const response = await fetch("/api/export/excel", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(filters),
+      body: JSON.stringify(buildReportPayload()),
     });
 
     if (!response.ok) {
@@ -267,6 +276,7 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-white px-4 py-2 rounded-full border border-slate-200">
                   <div className="flex items-center gap-1 text-rose-500"><AlertCircle className="w-3 h-3" /> Excluse (Dată): {report.metadata.excluded_missing_date}</div>
+                  <div className="flex items-center gap-1 text-violet-500"><AlertCircle className="w-3 h-3" /> Excluse (Dată invalidă): {report.metadata.excluded_invalid_date ?? 0}</div>
                   <div className="flex items-center gap-1 text-amber-500"><AlertCircle className="w-3 h-3" /> Excluse (Sursă): {report.metadata.excluded_source}</div>
                 </div>
               </div>
@@ -314,20 +324,24 @@ export default function App() {
                 <StatCard label="Total Comenzi" value={report.comenzi.n_total} icon={ShoppingCart} color="emerald" />
                 <StatCard 
                   label="Venit Total" 
-                  value={`${(report.comenzi.financials.total_pret_client || 0).toLocaleString()} €`} 
-                  subValue={`Avg: ${report.comenzi.financials.avg_pret_client?.toFixed(0) || 0} € / cursă`}
+                  value={formatCurrencyOrDash(report.comenzi.financials.total_pret_client)} 
+                  subValue={formatAvgCurrency(report.comenzi.financials.avg_pret_client, report.comenzi.financials.valid_price_count)}
                   color="emerald" 
                 />
                 <StatCard 
                   label="Profit Total" 
-                  value={`${(report.comenzi.financials.total_profit_all || 0).toLocaleString()} €`} 
-                  subValue={`Avg: ${report.comenzi.financials.avg_profit?.toFixed(0) || 0} € / cursă`}
+                  value={formatCurrencyOrDash(report.comenzi.financials.total_profit_all)} 
+                  subValue={formatAvgCurrency(report.comenzi.financials.avg_profit, report.comenzi.financials.valid_profit_count)}
                   color="emerald" 
                 />
                 <StatCard 
                   label="Profitabilitate Ponderată" 
-                  value={`${report.comenzi.financials.profitabilitate_ponderata?.toFixed(1) || 0}%`} 
-                  subValue="SUM(Profit) / SUM(Preț)"
+                  value={formatPercentOrDash(report.comenzi.financials.profitabilitate_ponderata)} 
+                  subValue={
+                    report.comenzi.financials.profitabilitate_ponderata === null || report.comenzi.financials.profitabilitate_ponderata === undefined
+                      ? "Insuficiente date pentru calcul"
+                      : "SUM(Profit) / SUM(Preț)"
+                  }
                   color="amber" 
                 />
               </div>
