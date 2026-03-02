@@ -16,6 +16,25 @@ import {
 const SOURCES_ALLOWED = ['website', 'telefon fix', 'newsletter'];
 const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
+const toLocalIsoDate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getDefaultLastWeekRange = () => {
+  const now = new Date();
+  const end = new Date(now);
+  end.setDate(now.getDate() - 1); // yesterday
+  const start = new Date(now);
+  start.setDate(now.getDate() - 7); // one week ago
+  return {
+    startDate: toLocalIsoDate(start),
+    endDate: toLocalIsoDate(end)
+  };
+};
+
 /** Format numeric or null: null/undefined => "—", else number with optional currency. No || 0 masking. */
 function formatCurrencyOrDash(value, currencyLabel = '€') {
   if (value === null || value === undefined || (typeof value === 'number' && isNaN(value))) return '—';
@@ -104,6 +123,7 @@ const TableBreakdown = ({ title, data }) => (
 // ====================================================
 
 export default function App() {
+  const defaultRange = getDefaultLastWeekRange();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -112,8 +132,8 @@ export default function App() {
 
   // State pentru filtre
   const [filters, setFilters] = useState({
-    startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0],
+    startDate: defaultRange.startDate,
+    endDate: defaultRange.endDate,
     sources: [...SOURCES_ALLOWED],
     sourcesComenzi: []
   });
