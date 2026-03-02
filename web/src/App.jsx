@@ -13,7 +13,7 @@ import {
 // CONFIGURARE ȘI UTILS (Back-end Logic)
 // ====================================================
 
-const SOURCES_ALLOWED = ['website', 'telefon fix', 'newsletter'];
+const SOURCES_ALLOWED = ['website', 'Telefon / WhatsApp Fix', 'newsletter'];
 const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4'];
 
 const toLocalIsoDate = (date) => {

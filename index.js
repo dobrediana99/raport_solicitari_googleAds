@@ -30,7 +30,7 @@ let settingsStore = {
   hour: 8,
   minute: 0,
   recipients: ['management@crystal-logistics-services.com'],
-  sources: ['website', 'telefon fix', 'newsletter'],
+  sources: ['website', 'Telefon / WhatsApp Fix', 'newsletter'],
   subjectTemplate: 'Raport Solicitări & Comenzi – {start} – {end}'
 };
 
