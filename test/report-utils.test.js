@@ -9,7 +9,8 @@ const {
   extractDate,
   isDateInRange,
   computeFinancials,
-  getStatusLabel
+  getStatusLabel,
+  EXCHANGE_RATE_RON_EUR
 } = require('../report-utils.js');
 
 describe('parseNumberLoose', () => {
@@ -191,6 +192,10 @@ describe('computeFinancials', () => {
     assert.strictEqual(out.financialsByCurrency.RON.total_profit, 200);
     assert.strictEqual(out.financialsByCurrency.EUR.profitability, 40);
     assert.strictEqual(out.financialsByCurrency.RON.profitability, 20);
+    // Global totals are normalized to EUR (RON converted by fixed rate).
+    assert.ok(Math.abs(out.financials.total_pret_client - (100 + 500 / EXCHANGE_RATE_RON_EUR)) < 1e-9);
+    assert.ok(Math.abs(out.financials.total_profit_all - (40 + 200 / EXCHANGE_RATE_RON_EUR)) < 1e-9);
+    assert.strictEqual(out.financials.exchange_rate_ron_eur, EXCHANGE_RATE_RON_EUR);
   });
 });
 

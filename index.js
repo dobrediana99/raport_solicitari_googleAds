@@ -31,6 +31,7 @@ let settingsStore = {
   minute: 0,
   recipients: ['management@crystal-logistics-services.com'],
   sources: ['website', 'Telefon / WhatsApp Fix', 'newsletter'],
+  sourcesComenzi: ['website', 'Telefon / WhatsApp Fix', 'newsletter'],
   subjectTemplate: 'Raport Solicitări & Comenzi – {start} – {end}'
 };
 
@@ -195,11 +196,16 @@ async function getAllItems(boardId, queryParams = null) {
 async function buildReport(startDateStr, endDateStr, sources, options = {}) {
   const {
     sourcesSolicitari = sources,
-    sourcesComenzi = null
+    sourcesComenzi = undefined
   } = options;
-  const allowedSolicitari = (sourcesSolicitari || sources || []).map(s => String(s).toLowerCase().trim()).filter(Boolean);
-  const allowedComenzi = Array.isArray(sourcesComenzi) && sourcesComenzi.length > 0
-    ? sourcesComenzi.map(s => String(s).toLowerCase().trim()).filter(Boolean)
+  const sourceListSolicitari = Array.isArray(sourcesSolicitari) ? sourcesSolicitari : (Array.isArray(sources) ? sources : []);
+  const sourceListComenzi = sourcesComenzi === undefined || sourcesComenzi === null
+    ? sourceListSolicitari
+    : (Array.isArray(sourcesComenzi) ? sourcesComenzi : []);
+
+  const allowedSolicitari = sourceListSolicitari.map(s => String(s).toLowerCase().trim()).filter(Boolean);
+  const allowedComenzi = sourceListComenzi.length > 0
+    ? sourceListComenzi.map(s => String(s).toLowerCase().trim()).filter(Boolean)
     : null;
 
   const start = DateTime.fromISO(startDateStr, { zone: TZ }).startOf('day');
@@ -374,7 +380,7 @@ async function generateExcelBuffer(reportData) {
   const sheetCom = workbook.addWorksheet('Comenzi');
   sheetCom.columns = [{ width: 35 }, { width: 15 }, { width: 15 }];
   const fin = reportData.comenzi.financials;
-  const currencyNote = fin.mixedCurrencies ? '(monede mixte – vezi per monedă)' : '€';
+  const currencyNote = '€';
   sheetCom.addRow(['METRICI FINANCIARE', 'VALOARE']);
   sheetCom.getRow(1).font = { bold: true };
   sheetCom.addRow(['Total Comenzi', reportData.comenzi.n_total]);
@@ -383,7 +389,8 @@ async function generateExcelBuffer(reportData) {
   sheetCom.addRow([`Profit Total (${currencyNote})`, fin.total_profit_all]);
   sheetCom.addRow([`Profit Mediu/Cursa (${currencyNote})`, fin.avg_profit]);
   sheetCom.addRow(['Profitabilitate Medie (%)', fin.profitabilitate_ponderata]);
-  let nextRow = 9;
+  sheetCom.addRow([`Curs conversie RON→EUR`, fin.exchange_rate_ron_eur ?? 5.1]);
+  let nextRow = 10;
   if (reportData.comenzi.financialsByCurrency && Object.keys(reportData.comenzi.financialsByCurrency).length > 0) {
     sheetCom.addRow([]);
     sheetCom.addRow(['PER MONEDĂ']);
@@ -414,7 +421,7 @@ async function sendReportEmail(reportData, excelBuffer, recipients, subjectTempl
   const subject = subjectTemplate.replace('{start}', start).replace('{end}', end);
 
   const fin = reportData.comenzi.financials;
-  const profitLabel = fin.mixedCurrencies ? 'Profit Total (monede mixte)' : 'Profit Total (€)';
+  const profitLabel = 'Profit Total (€)';
   const profitVal = fin.total_profit_all != null ? Number(fin.total_profit_all).toLocaleString() : '—';
   const profPondVal = fin.profitabilitate_ponderata != null ? `${fin.profitabilitate_ponderata}%` : '—';
   const html = `
@@ -465,7 +472,7 @@ function scheduleWeeklyJob(store) {
       const start = DateTime.now().setZone(TZ).minus({ days: 7 }).toFormat('yyyy-MM-dd');
       const report = await buildReport(start, end, store.sources || [], {
         sourcesSolicitari: store.sources,
-        sourcesComenzi: store.sourcesComenzi
+        sourcesComenzi: store.sourcesComenzi ?? store.sources
       });
       const buffer = await generateExcelBuffer(report);
       await sendReportEmail(report, buffer, store.recipients || [], store.subjectTemplate || 'Raport');
@@ -487,9 +494,11 @@ app.use(express.json());
 app.post('/api/report', async (req, res) => {
   try {
     const { startDate, endDate, sources, sourcesSolicitari, sourcesComenzi } = req.body;
+    const resolvedSourcesSolicitari = sourcesSolicitari ?? sources;
+    const resolvedSourcesComenzi = sourcesComenzi ?? resolvedSourcesSolicitari;
     const report = await buildReport(startDate, endDate, sources || [], {
-      sourcesSolicitari: sourcesSolicitari ?? sources,
-      sourcesComenzi: sourcesComenzi
+      sourcesSolicitari: resolvedSourcesSolicitari,
+      sourcesComenzi: resolvedSourcesComenzi
     });
     res.json(report);
   } catch (error) {
@@ -501,9 +510,11 @@ app.post('/api/report', async (req, res) => {
 app.post('/api/export/excel', async (req, res) => {
   try {
     const { startDate, endDate, sources, sourcesSolicitari, sourcesComenzi } = req.body;
+    const resolvedSourcesSolicitari = sourcesSolicitari ?? sources;
+    const resolvedSourcesComenzi = sourcesComenzi ?? resolvedSourcesSolicitari;
     const report = await buildReport(startDate, endDate, sources || [], {
-      sourcesSolicitari: sourcesSolicitari ?? sources,
-      sourcesComenzi: sourcesComenzi
+      sourcesSolicitari: resolvedSourcesSolicitari,
+      sourcesComenzi: resolvedSourcesComenzi
     });
     const buffer = await generateExcelBuffer(report);
     
@@ -530,7 +541,7 @@ app.post('/api/send-test', async (req, res) => {
     const start = DateTime.now().setZone(TZ).minus({ days: 7 }).toFormat('yyyy-MM-dd');
     const report = await buildReport(start, end, settingsStore.sources || [], {
       sourcesSolicitari: settingsStore.sources,
-      sourcesComenzi: settingsStore.sourcesComenzi
+      sourcesComenzi: settingsStore.sourcesComenzi ?? settingsStore.sources
     });
     const buffer = await generateExcelBuffer(report);
     await sendReportEmail(report, buffer, settingsStore.recipients, settingsStore.subjectTemplate);
