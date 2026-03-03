@@ -16,24 +16,19 @@ const MONDAY_API_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjU4NzY4OTI3NiwiYWFpIjoxM
 const GMAIL_USER = 'diana.d@crystal-logistics-services.com';
 const GMAIL_APP_PASSWORD = 'sxtt gmyu dnwk hrut';
 const EMAIL_FROM = 'diana.d@crystal-logistics-services.com';
-const REPORT_BASE_URL = 'http://localhost:3000';
 
 const BOARD_SOLICITARI = 1905911565;
 const BOARD_COMENZI = 2030349838;
+const DEFAULT_REPORT_SOURCES = ['website', 'Telefon / WhatsApp Fix', 'newsletter'];
+const AUTO_REPORT_RECIPIENTS = ['rafael.o@crystal-logistics-services.com'];
+const AUTO_REPORT_SUBJECT_TEMPLATE = 'Raport GoogleAds – {start} – {end}';
+const AUTO_REPORT_CRON_EXPRESSION = '0 8 * * 1'; // Luni la 08:00 (Europe/Bucharest)
 
 // ====================================================
-// IN-MEMORY SETTINGS STORE
+// AUTOMATION CONFIG
 // ====================================================
-let settingsStore = {
-  enabled: true,
-  dayOfWeek: 1,
-  hour: 8,
-  minute: 0,
-  recipients: ['management@crystal-logistics-services.com'],
-  sources: ['website', 'Telefon / WhatsApp Fix', 'newsletter'],
-  sourcesComenzi: ['website', 'Telefon / WhatsApp Fix', 'newsletter'],
-  subjectTemplate: 'Raport Solicitări & Comenzi – {start} – {end}'
-};
+const AUTO_REPORT_SOURCES_SOLICITARI = [...DEFAULT_REPORT_SOURCES];
+const AUTO_REPORT_SOURCES_COMENZI = [...DEFAULT_REPORT_SOURCES];
 
 // ====================================================
 // UTILS & PARSERS (display / distribution; numeric/date use report-utils)
@@ -472,72 +467,60 @@ const transporter = nodemailer.createTransport({
   auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD }
 });
 
-async function sendReportEmail(reportData, excelBuffer, recipients, subjectTemplate) {
+async function sendReportEmail(reportData, excelBuffer) {
   const { start, end } = reportData.metadata.period;
-  const subject = subjectTemplate.replace('{start}', start).replace('{end}', end);
-
-  const fin = reportData.comenzi.financials;
-  const profitLabel = 'Profit Total (€)';
-  const profitVal = fin.total_profit_all != null ? Number(fin.total_profit_all).toLocaleString() : '—';
-  const profPondVal = fin.profitabilitate_ponderata != null ? `${fin.profitabilitate_ponderata}%` : '—';
-  const html = `
-    <h2>Raport Solicitări & Comenzi</h2>
-    <p>Perioada: <b>${start}</b> — <b>${end}</b></p>
-    <ul>
-      <li>Total Solicitări: <b>${reportData.solicitari.n_total}</b></li>
-      <li>Total Comenzi/Curse: <b>${reportData.comenzi.n_total}</b></li>
-      <li>${profitLabel}: <b>${profitVal}${fin.mixedCurrencies ? '' : ' €'}</b></li>
-      <li>Profitabilitate: <b>${profPondVal}</b></li>
-    </ul>
-    <p><a href="${REPORT_BASE_URL}">Accesează Dashboard-ul Live</a></p>
-    <p>Găsești raportul detaliat atașat în format Excel.</p>
-  `;
+  const subject = AUTO_REPORT_SUBJECT_TEMPLATE.replace('{start}', start).replace('{end}', end);
+  const text = [
+    'Salut,',
+    '',
+    `Atașat este raportul GoogleAds pentru perioada ${start} - ${end}.`,
+    '',
+    'Mulțumesc.'
+  ].join('\n');
 
   await transporter.sendMail({
     from: EMAIL_FROM,
-    to: recipients.join(', '),
+    to: AUTO_REPORT_RECIPIENTS.join(', '),
     subject,
-    html,
+    text,
     attachments: [{ filename: `Raport_googleAds_${start}_${end}.xlsx`, content: excelBuffer }]
   });
 }
 
 // ====================================================
-// SCHEDULER (dynamic from settingsStore)
+// SCHEDULER (hardcoded Monday 08:00)
 // ====================================================
 let scheduledJob = null;
 
-function scheduleWeeklyJob(store) {
+function getPreviousFullWeekRange(reference = DateTime.now().setZone(TZ)) {
+  const startOfCurrentWeek = reference.startOf('week');
+  return {
+    start: startOfCurrentWeek.minus({ weeks: 1 }).toFormat('yyyy-MM-dd'),
+    end: startOfCurrentWeek.minus({ days: 1 }).toFormat('yyyy-MM-dd')
+  };
+}
+
+function scheduleWeeklyJob() {
   if (scheduledJob) {
     scheduledJob.stop();
     scheduledJob = null;
   }
-  if (!store.enabled) {
-    console.log('[Cron] Scheduler disabled in settings.');
-    return;
-  }
-  const minute = Math.max(0, Math.min(59, store.minute ?? 0));
-  const hour = Math.max(0, Math.min(23, store.hour ?? 8));
-  const dayOfWeek = Math.max(0, Math.min(7, store.dayOfWeek ?? 1));
-  // node-cron: minute hour dayOfMonth month dayOfWeek (0-7, 0 and 7 = Sunday)
-  const cronExpr = `${minute} ${hour} * * ${dayOfWeek}`;
-  scheduledJob = cron.schedule(cronExpr, async () => {
+  scheduledJob = cron.schedule(AUTO_REPORT_CRON_EXPRESSION, async () => {
     console.log('[Cron] Running scheduled job...');
     try {
-      const end = DateTime.now().setZone(TZ).minus({ days: 1 }).toFormat('yyyy-MM-dd');
-      const start = DateTime.now().setZone(TZ).minus({ days: 7 }).toFormat('yyyy-MM-dd');
-      const report = await buildReport(start, end, store.sources || [], {
-        sourcesSolicitari: store.sources,
-        sourcesComenzi: store.sourcesComenzi ?? store.sources
+      const { start, end } = getPreviousFullWeekRange();
+      const report = await buildReport(start, end, DEFAULT_REPORT_SOURCES, {
+        sourcesSolicitari: AUTO_REPORT_SOURCES_SOLICITARI,
+        sourcesComenzi: AUTO_REPORT_SOURCES_COMENZI
       });
       const buffer = await generateExcelBuffer(report);
-      await sendReportEmail(report, buffer, store.recipients || [], store.subjectTemplate || 'Raport');
+      await sendReportEmail(report, buffer);
       console.log(`[Cron] Successfully sent report for ${start} - ${end}`);
     } catch (err) {
       console.error('[Cron] Error executing job:', err);
     }
   }, { timezone: TZ });
-  console.log(`[Cron] Scheduled: ${cronExpr} (${TZ})`);
+  console.log(`[Cron] Scheduled: ${AUTO_REPORT_CRON_EXPRESSION} (${TZ})`);
 }
 
 // ====================================================
@@ -583,26 +566,17 @@ app.post('/api/export/excel', async (req, res) => {
   }
 });
 
-app.get('/api/settings', (req, res) => res.json(settingsStore));
-
-app.post('/api/settings', (req, res) => {
-  settingsStore = { ...settingsStore, ...req.body };
-  scheduleWeeklyJob(settingsStore);
-  res.json({ success: true, settings: settingsStore });
-});
-
 app.post('/api/send-test', async (req, res) => {
   try {
-    const end = DateTime.now().setZone(TZ).minus({ days: 1 }).toFormat('yyyy-MM-dd');
-    const start = DateTime.now().setZone(TZ).minus({ days: 7 }).toFormat('yyyy-MM-dd');
-    const report = await buildReport(start, end, settingsStore.sources || [], {
-      sourcesSolicitari: settingsStore.sources,
-      sourcesComenzi: settingsStore.sourcesComenzi ?? settingsStore.sources
+    const { start, end } = getPreviousFullWeekRange();
+    const report = await buildReport(start, end, DEFAULT_REPORT_SOURCES, {
+      sourcesSolicitari: AUTO_REPORT_SOURCES_SOLICITARI,
+      sourcesComenzi: AUTO_REPORT_SOURCES_COMENZI
     });
     const buffer = await generateExcelBuffer(report);
-    await sendReportEmail(report, buffer, settingsStore.recipients, settingsStore.subjectTemplate);
+    await sendReportEmail(report, buffer);
     
-    res.json({ success: true, message: "Email trimis cu succes." });
+    res.json({ success: true, message: `Email trimis cu succes pentru perioada ${start} - ${end}.` });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
@@ -616,5 +590,5 @@ app.get("/", (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server started on http://localhost:${PORT}`);
   console.log(`Timezone: ${TZ}`);
-  scheduleWeeklyJob(settingsStore);
+  scheduleWeeklyJob();
 });
