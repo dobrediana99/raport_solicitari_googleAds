@@ -340,67 +340,122 @@ async function generateExcelBuffer(reportData) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Monday Reporting MVP';
 
-  // --- SHEET 1: METADATA ---
-  const sheetMeta = workbook.addWorksheet('Metadata');
-  sheetMeta.columns = [{ header: 'Cheie', key: 'k', width: 25 }, { header: 'Valoare', key: 'v', width: 40 }];
-  sheetMeta.addRow({ k: 'Perioada', v: `${reportData.metadata.period.start} - ${reportData.metadata.period.end}` });
-  sheetMeta.addRow({ k: 'Surse filtrate', v: reportData.metadata.sources.join(', ') });
-  sheetMeta.addRow({ k: 'Generat la', v: reportData.metadata.generated_at });
-  sheetMeta.addRow({ k: 'Itemi excluși (Lipsă dată)', v: reportData.metadata.excluded_missing_date });
-  sheetMeta.addRow({ k: 'Itemi excluși (Dată invalidă)', v: reportData.metadata.excluded_invalid_date ?? 0 });
-  sheetMeta.addRow({ k: 'Itemi excluși (Sursă invalidă)', v: reportData.metadata.excluded_source });
-  sheetMeta.getRow(1).font = { bold: true };
+  const thinBorder = {
+    top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+    left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+    bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+    right: { style: 'thin', color: { argb: 'FFD1D5DB' } }
+  };
+
+  const fills = {
+    section: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } },
+    header: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } },
+    metricHeader: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } }
+  };
+
+  const styleRowBorders = (row) => {
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      cell.border = thinBorder;
+      cell.alignment = { vertical: 'middle' };
+    });
+  };
 
   const addBreakdownTables = (sheet, breakdowns, startRow = 1) => {
     let currentRow = startRow;
     for (const [title, data] of Object.entries(breakdowns)) {
-      sheet.getCell(`A${currentRow}`).value = title.toUpperCase();
-      sheet.getCell(`A${currentRow}`).font = { bold: true };
+      const sectionRow = sheet.getRow(currentRow);
+      sheet.mergeCells(`A${currentRow}:C${currentRow}`);
+      const sectionCell = sheet.getCell(`A${currentRow}`);
+      sectionCell.value = title.toUpperCase();
+      sectionCell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      sectionCell.fill = fills.section;
+      sectionCell.alignment = { vertical: 'middle', horizontal: 'left' };
+      styleRowBorders(sectionRow);
       currentRow++;
       
-      sheet.getRow(currentRow).values = ['Valoare', 'Nr', '%'];
-      sheet.getRow(currentRow).font = { bold: true };
+      const headerRow = sheet.getRow(currentRow);
+      headerRow.values = ['Valoare', 'Nr', '%'];
+      headerRow.font = { bold: true };
+      headerRow.fill = fills.header;
+      headerRow.alignment = { vertical: 'middle', horizontal: 'left' };
+      styleRowBorders(headerRow);
       currentRow++;
 
       data.forEach(row => {
-        sheet.getRow(currentRow).values = [row.valoare, row.nr, `${row.procent}%`];
+        const dataRow = sheet.getRow(currentRow);
+        dataRow.values = [row.valoare, row.nr, `${row.procent}%`];
+        styleRowBorders(dataRow);
+        dataRow.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
+        dataRow.getCell(3).alignment = { vertical: 'middle', horizontal: 'right' };
         currentRow++;
       });
       currentRow += 2; // Spacing
     }
+    return currentRow;
   };
 
-  // --- SHEET 2: SOLICITARI ---
+  // --- SHEET 1: SOLICITARI ---
   const sheetSol = workbook.addWorksheet('Solicitari');
-  sheetSol.columns = [{ width: 35 }, { width: 15 }, { width: 15 }];
-  sheetSol.addRow(['Total Solicitari', reportData.solicitari.n_total]);
+  sheetSol.columns = [{ width: 42 }, { width: 14 }, { width: 14 }];
+  sheetSol.addRow(['Total Solicitari', reportData.solicitari.n_total, '']);
   sheetSol.getRow(1).font = { bold: true, size: 12 };
+  sheetSol.getRow(1).fill = fills.metricHeader;
+  styleRowBorders(sheetSol.getRow(1));
+  sheetSol.getCell('B1').alignment = { vertical: 'middle', horizontal: 'right' };
   addBreakdownTables(sheetSol, reportData.solicitari.breakdowns, 3);
 
-  // --- SHEET 3: COMENZI ---
+  // --- SHEET 2: COMENZI ---
   const sheetCom = workbook.addWorksheet('Comenzi');
-  sheetCom.columns = [{ width: 35 }, { width: 15 }, { width: 15 }];
+  sheetCom.columns = [{ width: 42 }, { width: 20 }, { width: 18 }];
   const fin = reportData.comenzi.financials;
   const currencyNote = '€';
-  sheetCom.addRow(['METRICI FINANCIARE', 'VALOARE']);
+  sheetCom.addRow(['METRICI FINANCIARE', 'VALOARE', '']);
   sheetCom.getRow(1).font = { bold: true };
-  sheetCom.addRow(['Total Comenzi', reportData.comenzi.n_total]);
-  sheetCom.addRow([`Venit Total (${currencyNote})`, fin.total_pret_client]);
-  sheetCom.addRow([`Venit Mediu/Cursa (${currencyNote})`, fin.avg_pret_client]);
-  sheetCom.addRow([`Profit Total (${currencyNote})`, fin.total_profit_all]);
-  sheetCom.addRow([`Profit Mediu/Cursa (${currencyNote})`, fin.avg_profit]);
-  sheetCom.addRow(['Profitabilitate Medie (%)', fin.profitabilitate_ponderata]);
-  sheetCom.addRow([`Curs conversie RON→EUR`, fin.exchange_rate_ron_eur ?? 5.1]);
-  let nextRow = 10;
+  sheetCom.getRow(1).fill = fills.metricHeader;
+  styleRowBorders(sheetCom.getRow(1));
+
+  const metricRows = [
+    ['Total Comenzi', reportData.comenzi.n_total, 'count'],
+    [`Venit Total (${currencyNote})`, fin.total_pret_client, 'currency'],
+    [`Venit Mediu/Cursa (${currencyNote})`, fin.avg_pret_client, 'currency'],
+    [`Profit Total (${currencyNote})`, fin.total_profit_all, 'currency'],
+    [`Profit Mediu/Cursa (${currencyNote})`, fin.avg_profit, 'currency'],
+    ['Profitabilitate Medie (%)', fin.profitabilitate_ponderata, 'percent'],
+    ['Curs conversie RON→EUR', fin.exchange_rate_ron_eur ?? 5.1, 'rate']
+  ];
+
+  metricRows.forEach(([label, value, type]) => {
+    const row = sheetCom.addRow([label, value, '']);
+    styleRowBorders(row);
+    row.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
+    if (value !== null && value !== undefined && typeof value === 'number') {
+      if (type === 'currency') row.getCell(2).numFmt = '#,##0.00';
+      if (type === 'percent') row.getCell(2).numFmt = '0.00';
+      if (type === 'rate') row.getCell(2).numFmt = '0.0000';
+    }
+  });
+
+  let nextRow = sheetCom.lastRow.number + 2;
   if (reportData.comenzi.financialsByCurrency && Object.keys(reportData.comenzi.financialsByCurrency).length > 0) {
     sheetCom.addRow([]);
-    sheetCom.addRow(['PER MONEDĂ']);
+    const sectionRow = sheetCom.addRow(['PER MONEDĂ', '', '']);
+    sectionRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    sectionRow.fill = fills.section;
+    sheetCom.mergeCells(`A${sectionRow.number}:C${sectionRow.number}`);
+    styleRowBorders(sectionRow);
     for (const [curr, data] of Object.entries(reportData.comenzi.financialsByCurrency)) {
-      sheetCom.addRow([`${curr} – Venit`, data.total_venue]);
-      sheetCom.addRow([`${curr} – Profit`, data.total_profit]);
-      sheetCom.addRow([`${curr} – Profitabilitate %`, data.profitability]);
+      const rowRevenue = sheetCom.addRow([`${curr} – Venit`, data.total_venue, '']);
+      const rowProfit = sheetCom.addRow([`${curr} – Profit`, data.total_profit, '']);
+      const rowProfitability = sheetCom.addRow([`${curr} – Profitabilitate %`, data.profitability, '']);
+      [rowRevenue, rowProfit, rowProfitability].forEach((row) => {
+        styleRowBorders(row);
+        row.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
+      });
+      rowRevenue.getCell(2).numFmt = '#,##0.00';
+      rowProfit.getCell(2).numFmt = '#,##0.00';
+      rowProfitability.getCell(2).numFmt = '0.00';
     }
-    nextRow += 2 + 3 * Object.keys(reportData.comenzi.financialsByCurrency).length;
+    nextRow = sheetCom.lastRow.number + 2;
   }
   addBreakdownTables(sheetCom, reportData.comenzi.breakdowns, nextRow);
 
@@ -443,7 +498,7 @@ async function sendReportEmail(reportData, excelBuffer, recipients, subjectTempl
     to: recipients.join(', '),
     subject,
     html,
-    attachments: [{ filename: `Raport_${start}_${end}.xlsx`, content: excelBuffer }]
+    attachments: [{ filename: `Raport_googleAds_${start}_${end}.xlsx`, content: excelBuffer }]
   });
 }
 
@@ -520,7 +575,7 @@ app.post('/api/export/excel', async (req, res) => {
     const buffer = await generateExcelBuffer(report);
     
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="raport_${startDate}_${endDate}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="Raport_googleAds_${startDate}_${endDate}.xlsx"`);
     res.send(buffer);
   } catch (error) {
     console.error(error);

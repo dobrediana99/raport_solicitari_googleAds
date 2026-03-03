@@ -202,7 +202,7 @@ export default function App() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Raport_${filters.startDate}_${filters.endDate}.xlsx`;
+    a.download = `Raport_googleAds_${filters.startDate}_${filters.endDate}.xlsx`;
     a.click();
     window.URL.revokeObjectURL(url);
   } catch (err) {
