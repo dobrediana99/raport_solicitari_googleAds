@@ -500,6 +500,17 @@ function getPreviousFullWeekRange(reference = DateTime.now().setZone(TZ)) {
   };
 }
 
+async function runAutomatedWeeklyReport() {
+  const { start, end } = getPreviousFullWeekRange();
+  const report = await buildReport(start, end, DEFAULT_REPORT_SOURCES, {
+    sourcesSolicitari: AUTO_REPORT_SOURCES_SOLICITARI,
+    sourcesComenzi: AUTO_REPORT_SOURCES_COMENZI
+  });
+  const buffer = await generateExcelBuffer(report);
+  await sendReportEmail(report, buffer);
+  return { start, end };
+}
+
 function scheduleWeeklyJob() {
   if (scheduledJob) {
     scheduledJob.stop();
@@ -508,13 +519,7 @@ function scheduleWeeklyJob() {
   scheduledJob = cron.schedule(AUTO_REPORT_CRON_EXPRESSION, async () => {
     console.log('[Cron] Running scheduled job...');
     try {
-      const { start, end } = getPreviousFullWeekRange();
-      const report = await buildReport(start, end, DEFAULT_REPORT_SOURCES, {
-        sourcesSolicitari: AUTO_REPORT_SOURCES_SOLICITARI,
-        sourcesComenzi: AUTO_REPORT_SOURCES_COMENZI
-      });
-      const buffer = await generateExcelBuffer(report);
-      await sendReportEmail(report, buffer);
+      const { start, end } = await runAutomatedWeeklyReport();
       console.log(`[Cron] Successfully sent report for ${start} - ${end}`);
     } catch (err) {
       console.error('[Cron] Error executing job:', err);
@@ -568,14 +573,7 @@ app.post('/api/export/excel', async (req, res) => {
 
 app.post('/api/send-test', async (req, res) => {
   try {
-    const { start, end } = getPreviousFullWeekRange();
-    const report = await buildReport(start, end, DEFAULT_REPORT_SOURCES, {
-      sourcesSolicitari: AUTO_REPORT_SOURCES_SOLICITARI,
-      sourcesComenzi: AUTO_REPORT_SOURCES_COMENZI
-    });
-    const buffer = await generateExcelBuffer(report);
-    await sendReportEmail(report, buffer);
-    
+    const { start, end } = await runAutomatedWeeklyReport();
     res.json({ success: true, message: `Email trimis cu succes pentru perioada ${start} - ${end}.` });
   } catch (error) {
     console.error(error);
@@ -587,8 +585,22 @@ app.get("/", (req, res) => {
   res.send("OK - Monday Reports API is running");
 });
 
-app.listen(PORT, () => {
-  console.log(`Server started on http://localhost:${PORT}`);
-  console.log(`Timezone: ${TZ}`);
-  scheduleWeeklyJob();
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server started on http://localhost:${PORT}`);
+    console.log(`Timezone: ${TZ}`);
+    scheduleWeeklyJob();
+  });
+}
+
+module.exports = {
+  app,
+  TZ,
+  DEFAULT_REPORT_SOURCES,
+  AUTO_REPORT_CRON_EXPRESSION,
+  buildReport,
+  generateExcelBuffer,
+  sendReportEmail,
+  getPreviousFullWeekRange,
+  runAutomatedWeeklyReport
+};
