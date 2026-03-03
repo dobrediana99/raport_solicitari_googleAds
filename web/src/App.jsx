@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, LineChart, Line
 } from 'recharts';
 import { 
-  Calendar, Download, Mail, Settings, TrendingUp, 
-  ShoppingCart, Filter, AlertCircle, Clock, ChevronRight,
-  FileText, CheckCircle2, Globe, Truck, User, Send, Save, Loader2
+  Calendar, Download, Mail, TrendingUp, 
+  ShoppingCart, Filter, AlertCircle, ChevronRight,
+  FileText, CheckCircle2, Globe, Truck, User, Loader2
 } from 'lucide-react';
 
 // ====================================================
@@ -124,7 +124,6 @@ const TableBreakdown = ({ title, data }) => (
 
 export default function App() {
   const defaultRange = getDefaultLastWeekRange();
-  const [activeTab, setActiveTab] = useState('dashboard');
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [report, setReport] = useState(null);
@@ -137,17 +136,6 @@ export default function App() {
     sources: [...SOURCES_ALLOWED],
     sourcesComenzi: [...SOURCES_ALLOWED]
   });
-
-  // State pentru setări (încărcat din API la deschidere tab)
-  const [settings, setSettings] = useState({
-    enabled: true,
-    dayOfWeek: 1,
-    hour: 8,
-    minute: 0,
-    recipients: ["management@crystal-logistics-services.com"],
-    subjectTemplate: "Raport Solicitări & Comenzi – {start} – {end}"
-  });
-  const [settingsSaveStatus, setSettingsSaveStatus] = useState(null);
 
   const generateReport = async () => {
     setLoading(true);
@@ -212,44 +200,9 @@ export default function App() {
   }
 };
 
-  const sendTestEmail = async () => {
-    try {
-      await fetch('/api/send-test', { method: 'POST' });
-      alert("Email de test trimis cu succes!");
-    } catch (err) {
-      alert("Eroare la trimitere email");
-    }
-  };
-
   useEffect(() => {
     generateReport();
   }, []);
-
-  useEffect(() => {
-    if (activeTab === 'settings') {
-      fetch('/api/settings')
-        .then(r => r.ok ? r.json() : Promise.reject(new Error('Eroare la încărcare setări')))
-        .then(data => setSettings(prev => ({ ...prev, ...data })))
-        .catch(() => setSettingsSaveStatus('error_load'));
-    }
-  }, [activeTab]);
-
-  const saveSettings = async () => {
-    setSettingsSaveStatus(null);
-    try {
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
-      });
-      if (!res.ok) throw new Error('Salvare eșuată');
-      const data = await res.json();
-      setSettings(data.settings || settings);
-      setSettingsSaveStatus('success');
-    } catch (err) {
-      setSettingsSaveStatus('error');
-    }
-  };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased">
@@ -267,17 +220,8 @@ export default function App() {
           </div>
 
           <div className="flex bg-slate-100 p-1 rounded-xl">
-            <button 
-              onClick={() => setActiveTab('dashboard')}
-              className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
+            <button className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold bg-white shadow-sm text-indigo-600">
               <BarChart className="w-4 h-4" /> Dashboard
-            </button>
-            <button 
-              onClick={() => setActiveTab('settings')}
-              className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'settings' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              <Settings className="w-4 h-4" /> Programare
             </button>
           </div>
         </div>
@@ -331,7 +275,7 @@ export default function App() {
         </div>
 
         {/* CONTENT */}
-        {activeTab === 'dashboard' && report && (
+        {report && (
           <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
             
             {/* SOLICITARI SECTION */}
@@ -482,125 +426,6 @@ export default function App() {
                 <TableBreakdown title="Țară Descărcare" data={report.comenzi.breakdowns.tara_descarcare} />
               </div>
             </section>
-          </div>
-        )}
-
-        {/* SETTINGS / SCHEDULER */}
-        {activeTab === 'settings' && (
-          <div className="max-w-3xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-            <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl">
-              <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-4">
-                  <div className="bg-indigo-50 p-3 rounded-2xl">
-                    <Clock className="text-indigo-600 w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-black text-slate-800 tracking-tight">Automatizare Raport Săptămânal</h3>
-                    <p className="text-sm text-slate-400 font-medium">Trimite rapoarte automate pe email</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => setSettings({...settings, enabled: !settings.enabled})}
-                  className={`w-14 h-8 rounded-full transition-all relative ${settings.enabled ? 'bg-indigo-600' : 'bg-slate-200'}`}
-                >
-                  <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-md transition-all ${settings.enabled ? 'left-7' : 'left-1'}`} />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Ziua Trimiterii</label>
-                    <select 
-                      value={settings.dayOfWeek}
-                      onChange={e => setSettings({...settings, dayOfWeek: parseInt(e.target.value)})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                    >
-                      <option value={1}>Luni</option>
-                      <option value={2}>Marți</option>
-                      <option value={3}>Miercuri</option>
-                      <option value={4}>Joi</option>
-                      <option value={5}>Vineri</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Ora Trimiterii (Bucharest)</label>
-                    <input 
-                      type="number" 
-                      min="0" max="23"
-                      value={settings.hour}
-                      onChange={e => setSettings({...settings, hour: parseInt(e.target.value, 10)})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Minut</label>
-                    <input 
-                      type="number" 
-                      min="0" max="59"
-                      value={settings.minute ?? 0}
-                      onChange={e => setSettings({...settings, minute: parseInt(e.target.value, 10)})}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex justify-between">
-                      Destinatari 
-                      <span className="text-[10px] opacity-50 italic">Separați prin virgulă</span>
-                    </label>
-                    <textarea 
-                      value={settings.recipients.join(', ')}
-                      onChange={e => setSettings({...settings, recipients: e.target.value.split(',').map(s => s.trim())})}
-                      rows={3}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none"
-                      placeholder="email@exemplu.ro"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2 mb-8">
-                <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Template Subiect Email</label>
-                <input 
-                  type="text" 
-                  value={settings.subjectTemplate}
-                  onChange={e => setSettings({...settings, subjectTemplate: e.target.value})}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                />
-              </div>
-
-              {settingsSaveStatus === 'success' && <p className="text-sm font-bold text-emerald-600">Configurație salvată.</p>}
-              {settingsSaveStatus === 'error' && <p className="text-sm font-bold text-rose-600">Eroare la salvare.</p>}
-              {settingsSaveStatus === 'error_load' && <p className="text-sm font-bold text-amber-600">Nu s-au putut încărca setările.</p>}
-              <div className="flex gap-4">
-                <button 
-                  onClick={saveSettings}
-                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-100"
-                >
-                  <Save className="w-5 h-5" /> Salvează Configurația
-                </button>
-                <button 
-                  onClick={sendTestEmail}
-                  className="px-8 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all"
-                >
-                  <Send className="w-5 h-5" /> Test
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 flex gap-4">
-              <AlertCircle className="text-amber-500 w-6 h-6 shrink-0" />
-              <div>
-                <p className="text-sm font-black text-amber-900 mb-1 tracking-tight uppercase">Informație Scheduler</p>
-                <p className="text-xs text-amber-700 leading-relaxed font-medium">
-                  Raportul automat folosește întotdeauna **ultimele 7 zile calendaristice complete** înainte de ziua trimiterii. 
-                  Sincronizarea cu Monday.com include automat paginarea și parsarea numerică robustă.
-                </p>
-              </div>
-            </div>
           </div>
         )}
       </main>
