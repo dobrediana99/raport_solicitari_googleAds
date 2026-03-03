@@ -51,6 +51,13 @@ function formatPercentOrDash(value) {
   return `${n.toFixed(1)}%`;
 }
 
+function formatCurrencyMap(totals) {
+  if (!totals || typeof totals !== 'object') return '—';
+  const entries = Object.entries(totals);
+  if (!entries.length) return '—';
+  return entries.map(([currency, amount]) => `${currency}: ${Number(amount).toLocaleString(undefined, { maximumFractionDigits: 2 })}`).join(' | ');
+}
+
 // ====================================================
 // COMPONENTE UI
 // ====================================================
@@ -190,7 +197,7 @@ export default function App() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Raport_googleAds_${filters.startDate}_${filters.endDate}.xlsx`;
+    a.download = `Raport_googleAds_facturi_${filters.startDate}_${filters.endDate}.xlsx`;
     a.click();
     window.URL.revokeObjectURL(url);
   } catch (err) {
@@ -426,6 +433,103 @@ export default function App() {
                 <TableBreakdown title="Țară Descărcare" data={report.comenzi.breakdowns.tara_descarcare} />
               </div>
             </section>
+
+            {report.facturi_scadente && (
+              <section className="pt-8 border-t border-slate-200">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-1.5 bg-rose-600 rounded-full"></div>
+                    <h2 className="text-2xl font-black text-slate-800 tracking-tight">Facturi Scadente</h2>
+                  </div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-white px-4 py-2 rounded-full border border-slate-200">
+                    Data referință: {report.facturi_scadente.metadata?.reference_date || '—'}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                  <StatCard
+                    label="Restante Neîncasate"
+                    value={report.facturi_scadente.overdue?.totals?.item_count ?? 0}
+                    subValue={`Total: ${formatCurrencyOrDash(report.facturi_scadente.overdue?.totals?.total_pret_client_eur, '€')}`}
+                    icon={AlertCircle}
+                    color="rose"
+                  />
+                  <StatCard
+                    label="Scadente Viitoare"
+                    value={report.facturi_scadente.upcoming?.totals?.item_count ?? 0}
+                    subValue={`Total: ${formatCurrencyOrDash(report.facturi_scadente.upcoming?.totals?.total_pret_client_eur, '€')}`}
+                    icon={Calendar}
+                    color="amber"
+                  />
+                  <StatCard
+                    label="Încasat în Perioadă"
+                    value={formatCurrencyOrDash(report.facturi_scadente.cashflow?.collected_in_period?.total_pret_client_eur, '€')}
+                    subValue={`${report.facturi_scadente.cashflow?.collected_in_period?.item_count ?? 0} itemi`}
+                    icon={CheckCircle2}
+                    color="emerald"
+                  />
+                  <StatCard
+                    label="Întârziere > 90 zile"
+                    value={report.facturi_scadente.cashflow?.delay_buckets?.over_90?.item_count ?? 0}
+                    subValue="din cele încasate în perioadă"
+                    icon={AlertCircle}
+                    color="rose"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <TableBreakdown title="Restanțe după Scadență" data={report.facturi_scadente.overdue?.summary || []} />
+                  <TableBreakdown title="Scadențe Viitoare" data={report.facturi_scadente.upcoming?.summary || []} />
+                  <TableBreakdown title="Delay Încasare" data={report.facturi_scadente.cashflow?.delay_summary || []} />
+                </div>
+
+                <div className="mt-6 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
+                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">Top Restanțe {`>`} 90 zile (neîncasate)</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="text-[10px] text-slate-400 uppercase">
+                        <tr>
+                          <th className="px-4 py-3 text-left">Companie</th>
+                          <th className="px-4 py-3 text-left">Nr. Cursă</th>
+                          <th className="px-4 py-3 text-left">Data Scadență</th>
+                          <th className="px-4 py-3 text-right">Zile Depășire</th>
+                          <th className="px-4 py-3 text-right">Preț Client</th>
+                          <th className="px-4 py-3 text-left">Monedă</th>
+                          <th className="px-4 py-3 text-left">Principal</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {(report.facturi_scadente.overdue?.buckets?.over_90?.items || []).slice(0, 10).map((row, idx) => (
+                          <tr key={`${row.item_id || 'row'}-${idx}`} className="hover:bg-slate-50">
+                            <td className="px-4 py-3 font-medium text-slate-700">{row.nume_companie || '—'}</td>
+                            <td className="px-4 py-3">{row.nr_cursa || '—'}</td>
+                            <td className="px-4 py-3">{row.data_scadenta || '—'}</td>
+                            <td className="px-4 py-3 text-right font-bold">{row.zile_depasire_scadenta ?? '—'}</td>
+                            <td className="px-4 py-3 text-right">{formatCurrencyOrDash(row.pret_client, '')}</td>
+                            <td className="px-4 py-3">{row.moneda || '—'}</td>
+                            <td className="px-4 py-3">{row.nume_principal || '—'}</td>
+                          </tr>
+                        ))}
+                        {(report.facturi_scadente.overdue?.buckets?.over_90?.items || []).length === 0 && (
+                          <tr>
+                            <td className="px-4 py-4 text-slate-400" colSpan={7}>Nu există facturi în bucket-ul {`>`} 90 zile.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="mt-4 p-4 bg-slate-100 rounded-xl border border-slate-200 text-xs text-slate-600">
+                  <p className="font-bold mb-1">Totaluri pe monedă</p>
+                  <p>Restanțe: {formatCurrencyMap(report.facturi_scadente.overdue?.totals?.total_by_currency)}</p>
+                  <p>Scadențe viitoare: {formatCurrencyMap(report.facturi_scadente.upcoming?.totals?.total_by_currency)}</p>
+                  <p>Încasat în perioadă: {formatCurrencyMap(report.facturi_scadente.cashflow?.collected_in_period?.total_by_currency)}</p>
+                </div>
+              </section>
+            )}
           </div>
         )}
       </main>

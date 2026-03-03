@@ -10,6 +10,10 @@ const {
   isDateInRange,
   computeFinancials,
   getStatusLabel,
+  normalizePaymentStatus,
+  getOverdueBucket,
+  getUpcomingBucket,
+  getCollectionDelayBucket,
   EXCHANGE_RATE_RON_EUR
 } = require('../report-utils.js');
 
@@ -206,5 +210,56 @@ describe('getStatusLabel', () => {
   });
   it('returns null for missing column', () => {
     assert.strictEqual(getStatusLabel([], 'x'), null);
+  });
+});
+
+describe('normalizePaymentStatus', () => {
+  it('normalizes neincasat and incasat labels', () => {
+    assert.strictEqual(normalizePaymentStatus('Neincasat'), 'neincasat');
+    assert.strictEqual(normalizePaymentStatus('neîncasat'), 'neincasat');
+    assert.strictEqual(normalizePaymentStatus('Incasat'), 'incasat');
+  });
+
+  it('returns null for empty values', () => {
+    assert.strictEqual(normalizePaymentStatus(''), null);
+    assert.strictEqual(normalizePaymentStatus('(necompletat)'), null);
+  });
+});
+
+describe('invoice buckets', () => {
+  it('maps overdue days to expected ranges', () => {
+    assert.strictEqual(getOverdueBucket(91), 'over_90');
+    assert.strictEqual(getOverdueBucket(90), 'between_90_60');
+    assert.strictEqual(getOverdueBucket(60), 'between_90_60');
+    assert.strictEqual(getOverdueBucket(59), 'between_60_30');
+    assert.strictEqual(getOverdueBucket(30), 'between_60_30');
+    assert.strictEqual(getOverdueBucket(15), 'between_30_15');
+    assert.strictEqual(getOverdueBucket(14), 'between_15_0');
+    assert.strictEqual(getOverdueBucket(-1), null);
+  });
+
+  it('maps upcoming days to expected ranges', () => {
+    assert.strictEqual(getUpcomingBucket(0), 'due_0_5');
+    assert.strictEqual(getUpcomingBucket(5), 'due_0_5');
+    assert.strictEqual(getUpcomingBucket(6), 'due_5_15');
+    assert.strictEqual(getUpcomingBucket(15), 'due_5_15');
+    assert.strictEqual(getUpcomingBucket(16), 'due_15_60');
+    assert.strictEqual(getUpcomingBucket(60), 'due_15_60');
+    assert.strictEqual(getUpcomingBucket(61), null);
+    assert.strictEqual(getUpcomingBucket(-2), null);
+  });
+
+  it('maps collection delays to expected ranges', () => {
+    assert.strictEqual(getCollectionDelayBucket(-1), 'max_3');
+    assert.strictEqual(getCollectionDelayBucket(3), 'max_3');
+    assert.strictEqual(getCollectionDelayBucket(4), 'days_3_15');
+    assert.strictEqual(getCollectionDelayBucket(15), 'days_3_15');
+    assert.strictEqual(getCollectionDelayBucket(16), 'days_15_30');
+    assert.strictEqual(getCollectionDelayBucket(30), 'days_15_30');
+    assert.strictEqual(getCollectionDelayBucket(31), 'days_30_60');
+    assert.strictEqual(getCollectionDelayBucket(60), 'days_30_60');
+    assert.strictEqual(getCollectionDelayBucket(61), 'days_60_90');
+    assert.strictEqual(getCollectionDelayBucket(90), 'days_60_90');
+    assert.strictEqual(getCollectionDelayBucket(91), 'over_90');
   });
 });

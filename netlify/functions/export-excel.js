@@ -48,7 +48,7 @@ exports.handler = async function handler(event) {
       isBase64Encoded: true,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="Raport_googleAds_${startDate}_${endDate}.xlsx"`
+        'Content-Disposition': `attachment; filename="Raport_googleAds_facturi_${startDate}_${endDate}.xlsx"`
       },
       body: base64Content
     };

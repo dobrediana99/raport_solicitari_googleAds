@@ -245,6 +245,47 @@ function getStatusLabel(colValues, colId) {
   return null;
 }
 
+function stripDiacritics(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function normalizePaymentStatus(value) {
+  const normalized = stripDiacritics(value).toLowerCase().trim();
+  if (!normalized || normalized === '(necompletat)' || normalized === 'necompletat') return null;
+  if (normalized.includes('neincasat') || normalized.includes('ne incasat')) return 'neincasat';
+  if (normalized.includes('incasat')) return 'incasat';
+  return normalized;
+}
+
+function getOverdueBucket(overdueDays) {
+  if (typeof overdueDays !== 'number' || !Number.isFinite(overdueDays) || overdueDays < 0) return null;
+  if (overdueDays > 90) return 'over_90';
+  if (overdueDays >= 60) return 'between_90_60';
+  if (overdueDays >= 30) return 'between_60_30';
+  if (overdueDays >= 15) return 'between_30_15';
+  return 'between_15_0';
+}
+
+function getUpcomingBucket(daysToDue) {
+  if (typeof daysToDue !== 'number' || !Number.isFinite(daysToDue) || daysToDue < 0) return null;
+  if (daysToDue <= 5) return 'due_0_5';
+  if (daysToDue <= 15) return 'due_5_15';
+  if (daysToDue <= 60) return 'due_15_60';
+  return null;
+}
+
+function getCollectionDelayBucket(delayDays) {
+  if (typeof delayDays !== 'number' || !Number.isFinite(delayDays)) return null;
+  if (delayDays <= 3) return 'max_3';
+  if (delayDays <= 15) return 'days_3_15';
+  if (delayDays <= 30) return 'days_15_30';
+  if (delayDays <= 60) return 'days_30_60';
+  if (delayDays <= 90) return 'days_60_90';
+  return 'over_90';
+}
+
 module.exports = {
   parseNumberLoose,
   getNumericColumnValue,
@@ -253,6 +294,10 @@ module.exports = {
   isDateInRange,
   computeFinancials,
   getStatusLabel,
+  normalizePaymentStatus,
+  getOverdueBucket,
+  getUpcomingBucket,
+  getCollectionDelayBucket,
   isRonCurrency,
   convertToEur,
   EXCHANGE_RATE_RON_EUR
