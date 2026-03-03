@@ -53,6 +53,71 @@ const FACTURI_COLLECTION_DELAY_BUCKETS = [
   { key: 'over_90', label: 'Incasate dupa peste 90 zile de la scadenta' }
 ];
 
+const FACTURI_STATUS_PLATA_COLUMN_ID = 'color_mkv5g682';
+const FACTURI_STATUS_NEINCASAT_INDEXES = [0, 3]; // Neincasat + Litigiu (Neincasat)
+const FACTURI_STATUS_INCASAT_INDEXES = [1]; // Incasata
+const FACTURI_DATA_INCASARII_COLUMN_ID = 'date_mkv05mkx';
+const FACTURI_COLUMN_IDS_SUMMARY = [
+  'color_mkv5g682',
+  'date_mkyhsbh4',
+  'date_mkv05mkx',
+  'deal_creation_date',
+  'pulse_id_mks1dcwz',
+  'deal_owner',
+  'deal_value',
+  'color_mkse3amh',
+  'board_relation_mkpw4bcs'
+];
+const FACTURI_COLUMN_IDS_DETAILS = [
+  'color_mkv5g682',
+  'date_mkyhsbh4',
+  'date_mkv05mkx',
+  'deal_creation_date',
+  'date_mkxcj9sp',
+  'pulse_id_mks1dcwz',
+  'deal_owner',
+  'multiple_person_mkt9b24z',
+  'color_mktcvtpz',
+  'email_mkvneqyg',
+  'deal_value',
+  'color_mkse3amh',
+  'color_mktcqj26',
+  'long_text_mksezgvz',
+  'numeric_mksek8d2',
+  'color_mksex1w8',
+  'board_relation_mkpw4bcs'
+];
+const SOLICITARI_COLUMN_IDS = [
+  'deal_creation_date',
+  'deal_stage',
+  'color_mkpv6sj4',
+  'color_mksh2abx',
+  'dropdown_mkx6jyjf',
+  'dropdown_mkx687jv',
+  'color_mkx12a19',
+  'color_mksemxby',
+  'dropdown_mkxk7c69'
+];
+const COMENZI_COLUMN_IDS = [
+  'deal_creation_date',
+  'color_mktcvtpz',
+  'deal_value',
+  'formula_mkre3gx1',
+  'formula_mkxwd14p',
+  'color_mkse3amh',
+  'color_mktcr7h6',
+  'color_mktaev1d',
+  'deal_owner',
+  'color_mkx1kx5j',
+  'color_mkse1tmc',
+  'color_mkrb3hhk',
+  'dropdown_mkx1naw3',
+  'dropdown_mktsr9n2',
+  'dropdown_mktswwk3',
+  'dropdown_mkyq2ne1',
+  'lookup_mkxttcky'
+];
+
 // ====================================================
 // UTILS & PARSERS (display / distribution; numeric/date use report-utils)
 // ====================================================
@@ -141,6 +206,23 @@ const normalizeBreakdownValue = (rawValue) => {
 const buildDateQueryParams = (dateColumnId, startDateStr, endDateStr) => (
   `{ rules: [{ column_id: "${dateColumnId}", operator: between, compare_value: ["${startDateStr}", "${endDateStr}"] }] }`
 );
+
+const buildStatusQueryParams = (statusColumnId, statusIndexes) => {
+  const indexes = (Array.isArray(statusIndexes) ? statusIndexes : [])
+    .filter(Number.isInteger)
+    .join(', ');
+  return `{ rules: [{ column_id: "${statusColumnId}", operator: any_of, compare_value: [${indexes}] }] }`;
+};
+
+const buildStatusAndDateQueryParams = (statusColumnId, statusIndexes, dateColumnId, startDateStr, endDateStr) => {
+  const indexes = (Array.isArray(statusIndexes) ? statusIndexes : [])
+    .filter(Number.isInteger)
+    .join(', ');
+  return `{ rules: [
+    { column_id: "${statusColumnId}", operator: any_of, compare_value: [${indexes}] },
+    { column_id: "${dateColumnId}", operator: between, compare_value: ["${startDateStr}", "${endDateStr}"] }
+  ] }`;
+};
 
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
@@ -314,12 +396,17 @@ async function fetchBoardItems(boardId, options = {}) {
   const {
     cursor = null,
     retries = 5,
-    queryParams = null
+    queryParams = null,
+    columnIds = null
   } = options;
 
   const itemsPageArgs = cursor
     ? `limit: 250, cursor: "${cursor}"`
     : (queryParams ? `limit: 250, query_params: ${queryParams}` : 'limit: 250');
+
+  const columnIdsArg = Array.isArray(columnIds) && columnIds.length > 0
+    ? `(ids: [${columnIds.map(id => `"${id}"`).join(', ')}])`
+    : '';
 
   const query = `
     query {
@@ -329,7 +416,7 @@ async function fetchBoardItems(boardId, options = {}) {
           items {
             id
             name
-            column_values {
+            column_values${columnIdsArg} {
               id
               type
               text
@@ -361,23 +448,25 @@ async function fetchBoardItems(boardId, options = {}) {
   }
 }
 
-async function getAllItems(boardId, queryParams = null) {
+async function getAllItems(boardId, queryParams = null, columnIds = null) {
   let items = [];
   let cursor = null;
   do {
-    const page = await fetchBoardItems(boardId, { cursor, queryParams });
+    const page = await fetchBoardItems(boardId, { cursor, queryParams, columnIds });
     if (page && page.items) items.push(...page.items);
     cursor = page ? page.cursor : null;
   } while (cursor);
   return items;
 }
 
-function buildFacturiScadenteReport(allComenziItems, options = {}) {
+function buildFacturiScadenteReport(input, options = {}) {
   const {
     startDateStr,
     endDateStr,
     referenceDateStr
   } = options;
+  const unpaidItems = Array.isArray(input?.unpaidItems) ? input.unpaidItems : [];
+  const paidItemsInPeriod = Array.isArray(input?.paidItemsInPeriod) ? input.paidItemsInPeriod : [];
 
   const referenceDate = referenceDateStr
     ? DateTime.fromISO(referenceDateStr, { zone: TZ }).startOf('day')
@@ -406,7 +495,7 @@ function buildFacturiScadenteReport(allComenziItems, options = {}) {
 
   const statusDistribution = {};
 
-  allComenziItems.forEach(item => {
+  unpaidItems.forEach(item => {
     const row = makeFacturiRow(item, { referenceDate });
     const status = row.status_plata_client || 'nespecificat';
     statusDistribution[status] = (statusDistribution[status] || 0) + 1;
@@ -422,31 +511,48 @@ function buildFacturiScadenteReport(allComenziItems, options = {}) {
         counters.unpaid_missing_due_date++;
       }
     }
+  });
 
-    if (status === 'incasat' && row.data_incasarii === '(necompletat)') {
+  paidItemsInPeriod.forEach(item => {
+    const row = makeFacturiRow(item, { referenceDate });
+    const status = row.status_plata_client || 'nespecificat';
+    statusDistribution[status] = (statusDistribution[status] || 0) + 1;
+
+    if (row.data_incasarii === '(necompletat)') {
       counters.paid_missing_collection_date++;
+      return;
     }
 
-    if (status === 'incasat' && row.data_incasarii !== '(necompletat)') {
-      const collectionDate = toDayStart(row.data_incasarii);
-      if (collectionDate >= cashFlowStart && collectionDate <= cashFlowEnd) {
-        addFacturiRowToBucket(collectedInPeriod, row);
-        if (row.data_scadenta !== '(necompletat)') {
-          const dueDate = toDayStart(row.data_scadenta);
-          const delayDays = Math.floor(collectionDate.diff(dueDate, 'days').days);
-          const delayKey = reportUtils.getCollectionDelayBucket(delayDays);
-          if (delayKey && delayBuckets[delayKey]) {
-            addFacturiRowToBucket(delayBuckets[delayKey], {
-              ...row,
-              intarziere_incasare_zile: delayDays
-            });
-          }
-        } else {
-          counters.cashflow_missing_due_date_for_delay++;
-        }
+    const collectionDate = toDayStart(row.data_incasarii);
+    if (collectionDate < cashFlowStart || collectionDate > cashFlowEnd) return;
+
+    addFacturiRowToBucket(collectedInPeriod, row);
+    if (row.data_scadenta !== '(necompletat)') {
+      const dueDate = toDayStart(row.data_scadenta);
+      const delayDays = Math.floor(collectionDate.diff(dueDate, 'days').days);
+      const delayKey = reportUtils.getCollectionDelayBucket(delayDays);
+      if (delayKey && delayBuckets[delayKey]) {
+        addFacturiRowToBucket(delayBuckets[delayKey], {
+          ...row,
+          intarziere_incasare_zile: delayDays
+        });
       }
+    } else {
+      counters.cashflow_missing_due_date_for_delay++;
     }
   });
+
+  // Keep status coverage explicit in case query indexes miss a valid status label.
+  if (!statusDistribution.incasat) {
+    statusDistribution.incasat = paidItemsInPeriod.length;
+  }
+  if (!statusDistribution.neincasat && unpaidItems.length > 0) {
+    statusDistribution.neincasat = unpaidItems.length;
+  }
+
+  if (paidItemsInPeriod.length === 0) {
+    counters.paid_missing_collection_date = 0;
+  }
 
   const overdueSummary = buildFacturiSectionSummary(overdueBuckets);
   const upcomingSummary = buildFacturiSectionSummary(upcomingBuckets);
@@ -455,7 +561,11 @@ function buildFacturiScadenteReport(allComenziItems, options = {}) {
   return {
     metadata: {
       reference_date: referenceDate.toISODate(),
-      cashflow_period: { start: startDateStr, end: endDateStr }
+      cashflow_period: { start: startDateStr, end: endDateStr },
+      source_counts: {
+        unpaid_items: unpaidItems.length,
+        paid_items_in_period: paidItemsInPeriod.length
+      }
     },
     status_distribution: Object.entries(statusDistribution).map(([status, nr]) => ({ status, nr })),
     counters,
@@ -481,13 +591,70 @@ function buildFacturiScadenteReport(allComenziItems, options = {}) {
   };
 }
 
+function trimFacturiItemsForSummary(report) {
+  if (!report) return report;
+  const clone = JSON.parse(JSON.stringify(report));
+  const clearBucketItems = (bucketMap) => {
+    Object.values(bucketMap || {}).forEach(bucket => {
+      bucket.items = [];
+    });
+  };
+
+  clearBucketItems(clone.upcoming?.buckets);
+  clearBucketItems(clone.cashflow?.delay_buckets);
+  if (clone.cashflow?.collected_in_period) clone.cashflow.collected_in_period.items = [];
+
+  // Keep only top 10 for UI quick preview.
+  if (clone.overdue?.buckets?.over_90?.items) {
+    clone.overdue.buckets.over_90.items = clone.overdue.buckets.over_90.items.slice(0, 10);
+  }
+  Object.entries(clone.overdue?.buckets || {}).forEach(([key, bucket]) => {
+    if (key !== 'over_90') bucket.items = [];
+  });
+
+  return clone;
+}
+
+async function buildFacturiScadenteData(startDateStr, endDateStr, options = {}) {
+  const { includeDetails = true } = options;
+  const selectedColumns = includeDetails ? FACTURI_COLUMN_IDS_DETAILS : FACTURI_COLUMN_IDS_SUMMARY;
+  const facturiNeincasateQueryParams = buildStatusQueryParams(
+    FACTURI_STATUS_PLATA_COLUMN_ID,
+    FACTURI_STATUS_NEINCASAT_INDEXES
+  );
+  const facturiIncasateInPerioadaQueryParams = buildStatusAndDateQueryParams(
+    FACTURI_STATUS_PLATA_COLUMN_ID,
+    FACTURI_STATUS_INCASAT_INDEXES,
+    FACTURI_DATA_INCASARII_COLUMN_ID,
+    startDateStr,
+    endDateStr
+  );
+
+  const [rawComenziFacturiNeincasate, rawComenziFacturiIncasateInPerioada] = await Promise.all([
+    getAllItems(BOARD_COMENZI, facturiNeincasateQueryParams, selectedColumns),
+    getAllItems(BOARD_COMENZI, facturiIncasateInPerioadaQueryParams, selectedColumns)
+  ]);
+
+  const fullReport = buildFacturiScadenteReport({
+    unpaidItems: rawComenziFacturiNeincasate,
+    paidItemsInPeriod: rawComenziFacturiIncasateInPerioada
+  }, {
+    startDateStr,
+    endDateStr
+  });
+
+  return includeDetails ? fullReport : trimFacturiItemsForSummary(fullReport);
+}
+
 // ====================================================
 // REPORT GENERATOR
 // ====================================================
 async function buildReport(startDateStr, endDateStr, sources, options = {}) {
   const {
     sourcesSolicitari = sources,
-    sourcesComenzi = undefined
+    sourcesComenzi = undefined,
+    includeFacturi = true,
+    includeFacturiDetails = true
   } = options;
   const sourceListSolicitari = Array.isArray(sourcesSolicitari) ? sourcesSolicitari : (Array.isArray(sources) ? sources : []);
   const sourceListComenzi = sourcesComenzi === undefined || sourcesComenzi === null
@@ -552,22 +719,21 @@ async function buildReport(startDateStr, endDateStr, sources, options = {}) {
     })).sort((a, b) => b.nr - a.nr);
   };
 
-  console.log('Fetching Solicitari...');
+  console.log('Fetching Solicitari + Comenzi...');
   const solicitariQueryParams = buildDateQueryParams('deal_creation_date', startDateStr, endDateStr);
-  const rawSolicitari = await getAllItems(BOARD_SOLICITARI, solicitariQueryParams);
-  const validSolicitari = processSolicitari(rawSolicitari);
-
-  console.log('Fetching Comenzi...');
   const comenziQueryParams = buildDateQueryParams('deal_creation_date', startDateStr, endDateStr);
-  const rawComenzi = await getAllItems(BOARD_COMENZI, comenziQueryParams);
-  const validComenzi = processComenzi(rawComenzi);
+  const facturiPromise = includeFacturi
+    ? buildFacturiScadenteData(startDateStr, endDateStr, { includeDetails: includeFacturiDetails })
+    : Promise.resolve(null);
 
-  console.log('Fetching Comenzi for Facturi Scadente...');
-  const rawComenziFacturi = await getAllItems(BOARD_COMENZI);
-  const facturiScadente = buildFacturiScadenteReport(rawComenziFacturi, {
-    startDateStr,
-    endDateStr
-  });
+  const [rawSolicitari, rawComenzi, facturiScadente] = await Promise.all([
+    getAllItems(BOARD_SOLICITARI, solicitariQueryParams, SOLICITARI_COLUMN_IDS),
+    getAllItems(BOARD_COMENZI, comenziQueryParams, COMENZI_COLUMN_IDS),
+    facturiPromise
+  ]);
+
+  const validSolicitari = processSolicitari(rawSolicitari);
+  const validComenzi = processComenzi(rawComenzi);
 
   const {
     financials,
@@ -627,7 +793,7 @@ async function buildReport(startDateStr, endDateStr, sources, options = {}) {
         tara_client: calcDistribution(validComenzi, i => getFallbackValue(i.column_values, 'dropdown_mkyq2ne1', 'lookup_mkxttcky'))
       }
     },
-    facturi_scadente: facturiScadente
+    ...(includeFacturi ? { facturi_scadente: facturiScadente } : {})
   };
 }
 
@@ -1022,7 +1188,9 @@ async function runAutomatedWeeklyReport() {
   const { start, end } = getPreviousFullWeekRange();
   const report = await buildReport(start, end, DEFAULT_REPORT_SOURCES, {
     sourcesSolicitari: AUTO_REPORT_SOURCES_SOLICITARI,
-    sourcesComenzi: AUTO_REPORT_SOURCES_COMENZI
+    sourcesComenzi: AUTO_REPORT_SOURCES_COMENZI,
+    includeFacturi: true,
+    includeFacturiDetails: true
   });
   const buffer = await generateExcelBuffer(report);
   await sendReportEmail(report, buffer);
@@ -1055,14 +1223,32 @@ app.use(express.json());
 
 app.post('/api/report', async (req, res) => {
   try {
-    const { startDate, endDate, sources, sourcesSolicitari, sourcesComenzi } = req.body;
+    const { startDate, endDate, sources, sourcesSolicitari, sourcesComenzi, includeFacturi } = req.body;
     const resolvedSourcesSolicitari = sourcesSolicitari ?? sources;
     const resolvedSourcesComenzi = sourcesComenzi ?? resolvedSourcesSolicitari;
     const report = await buildReport(startDate, endDate, sources || [], {
       sourcesSolicitari: resolvedSourcesSolicitari,
-      sourcesComenzi: resolvedSourcesComenzi
+      sourcesComenzi: resolvedSourcesComenzi,
+      includeFacturi: includeFacturi === true,
+      includeFacturiDetails: false
     });
     res.json(report);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/report/facturi', async (req, res) => {
+  try {
+    const { startDate, endDate, includeDetails } = req.body;
+    if (!startDate || !endDate) {
+      return res.status(400).json({ error: 'startDate și endDate sunt obligatorii.' });
+    }
+    const facturiScadente = await buildFacturiScadenteData(startDate, endDate, {
+      includeDetails: includeDetails === true
+    });
+    res.json({ facturi_scadente: facturiScadente });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
@@ -1076,7 +1262,9 @@ app.post('/api/export/excel', async (req, res) => {
     const resolvedSourcesComenzi = sourcesComenzi ?? resolvedSourcesSolicitari;
     const report = await buildReport(startDate, endDate, sources || [], {
       sourcesSolicitari: resolvedSourcesSolicitari,
-      sourcesComenzi: resolvedSourcesComenzi
+      sourcesComenzi: resolvedSourcesComenzi,
+      includeFacturi: true,
+      includeFacturiDetails: true
     });
     const buffer = await generateExcelBuffer(report);
     
@@ -1117,6 +1305,7 @@ module.exports = {
   DEFAULT_REPORT_SOURCES,
   AUTO_REPORT_CRON_EXPRESSION,
   buildReport,
+  buildFacturiScadenteData,
   generateExcelBuffer,
   sendReportEmail,
   getPreviousFullWeekRange,

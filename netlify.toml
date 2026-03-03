@@ -12,6 +12,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/report/facturi"
+  to = "/.netlify/functions/facturi-report"
+  status = 200
+
+[[redirects]]
   from = "/api/export/excel"
   to = "/.netlify/functions/export-excel"
   status = 200

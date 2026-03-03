@@ -132,9 +132,11 @@ const TableBreakdown = ({ title, data }) => (
 export default function App() {
   const defaultRange = getDefaultLastWeekRange();
   const [loading, setLoading] = useState(false);
+  const [loadingFacturi, setLoadingFacturi] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [report, setReport] = useState(null);
   const [error, setError] = useState(null);
+  const [facturiError, setFacturiError] = useState(null);
 
   // State pentru filtre
   const [filters, setFilters] = useState({
@@ -146,14 +148,17 @@ export default function App() {
 
   const generateReport = async () => {
     setLoading(true);
+    setLoadingFacturi(false);
     setError(null);
+    setFacturiError(null);
     try {
       const payload = {
         startDate: filters.startDate,
         endDate: filters.endDate,
         sources: filters.sources,
         sourcesSolicitari: filters.sources,
-        sourcesComenzi: filters.sourcesComenzi ?? []
+        sourcesComenzi: filters.sourcesComenzi ?? [],
+        includeFacturi: false
       };
       const response = await fetch('/api/report', {
         method: 'POST',
@@ -164,6 +169,34 @@ export default function App() {
       if (!response.ok) throw new Error("Eroare la comunicarea cu serverul API.");
       const data = await response.json();
       setReport(data);
+
+      // Facturile se încarcă separat pentru a nu bloca dashboard-ul principal.
+      setLoadingFacturi(true);
+      fetch('/api/report/facturi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          includeDetails: false
+        })
+      })
+        .then(async (facturiResponse) => {
+          if (!facturiResponse.ok) {
+            const errText = await facturiResponse.text();
+            throw new Error(errText || 'Eroare la raportul Facturi Scadente.');
+          }
+          return facturiResponse.json();
+        })
+        .then((facturiData) => {
+          setReport(prev => ({ ...(prev || data), facturi_scadente: facturiData.facturi_scadente }));
+        })
+        .catch((facturiErr) => {
+          setFacturiError(facturiErr.message || 'Nu s-a putut încărca secțiunea Facturi Scadente.');
+        })
+        .finally(() => {
+          setLoadingFacturi(false);
+        });
     } catch (err) {
       setError(err.message);
       // Fallback la mock data doar pentru vizualizare în preview environment
@@ -280,6 +313,31 @@ export default function App() {
             </div>
           </div>
         </div>
+
+        {error && (
+          <div className="mb-8 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl text-sm font-semibold">
+            Eroare la încărcarea raportului: {error}
+          </div>
+        )}
+
+        {loading && !report && (
+          <div className="mb-8 bg-white border border-slate-200 rounded-xl p-6 flex items-center gap-3 text-slate-600">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span className="font-semibold">Se încarcă raportul...</span>
+          </div>
+        )}
+
+        {loadingFacturi && report && (
+          <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-xl text-sm font-semibold">
+            Secțiunea Facturi Scadente se încarcă...
+          </div>
+        )}
+
+        {facturiError && report && (
+          <div className="mb-6 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl text-sm font-semibold">
+            Facturi Scadente: {facturiError}
+          </div>
+        )}
 
         {/* CONTENT */}
         {report && (

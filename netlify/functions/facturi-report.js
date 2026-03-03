@@ -1,4 +1,4 @@
-const { buildReport } = require('../../index');
+const { buildFacturiScadenteData } = require('../../index');
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
@@ -23,7 +23,7 @@ exports.handler = async function handler(event) {
 
   try {
     const body = parseJsonBody(event);
-    const { startDate, endDate, sources, sourcesSolicitari, sourcesComenzi, includeFacturi } = body;
+    const { startDate, endDate, includeDetails } = body;
 
     if (!startDate || !endDate) {
       return {
@@ -33,20 +33,14 @@ exports.handler = async function handler(event) {
       };
     }
 
-    const resolvedSourcesSolicitari = sourcesSolicitari ?? sources;
-    const resolvedSourcesComenzi = sourcesComenzi ?? resolvedSourcesSolicitari;
-
-    const report = await buildReport(startDate, endDate, sources || [], {
-      sourcesSolicitari: resolvedSourcesSolicitari,
-      sourcesComenzi: resolvedSourcesComenzi,
-      includeFacturi: includeFacturi === true,
-      includeFacturiDetails: false
+    const facturi = await buildFacturiScadenteData(startDate, endDate, {
+      includeDetails: includeDetails === true
     });
 
     return {
       statusCode: 200,
       headers: jsonHeaders,
-      body: JSON.stringify(report)
+      body: JSON.stringify({ facturi_scadente: facturi })
     };
   } catch (error) {
     return {
