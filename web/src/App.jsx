@@ -95,7 +95,7 @@ const normalizeBreakdownCellValue = (value) => {
   return str;
 };
 
-const TableBreakdown = ({ title, data }) => (
+const TableBreakdown = ({ title, data, showFullText = false }) => (
   <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
     <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
       <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">{title}</h4>
@@ -112,7 +112,9 @@ const TableBreakdown = ({ title, data }) => (
         <tbody className="divide-y divide-slate-100">
           {data?.map((row, i) => (
             <tr key={i} className="hover:bg-slate-50 transition-colors">
-              <td className="px-4 py-2 font-medium text-slate-700 truncate max-w-[140px]">{normalizeBreakdownCellValue(row.valoare)}</td>
+              <td className={`px-4 py-2 font-medium text-slate-700 ${showFullText ? 'whitespace-normal break-words leading-snug' : 'truncate max-w-[140px]'}`}>
+                {normalizeBreakdownCellValue(row.valoare)}
+              </td>
               <td className="px-4 py-2 text-right font-bold">{row.nr}</td>
               <td className="px-4 py-2 text-right">
                 <span className="text-xs text-slate-400 font-mono">{row.procent}%</span>
@@ -536,9 +538,9 @@ export default function App() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <TableBreakdown title="Restanțe după Scadență" data={report.facturi_scadente.overdue?.summary || []} />
-                  <TableBreakdown title="Scadențe Viitoare" data={report.facturi_scadente.upcoming?.summary || []} />
-                  <TableBreakdown title="Delay Încasare" data={report.facturi_scadente.cashflow?.delay_summary || []} />
+                  <TableBreakdown title="Restanțe după Scadență" data={report.facturi_scadente.overdue?.summary || []} showFullText />
+                  <TableBreakdown title="Scadențe Viitoare" data={report.facturi_scadente.upcoming?.summary || []} showFullText />
+                  <TableBreakdown title="Delay Încasare" data={report.facturi_scadente.cashflow?.delay_summary || []} showFullText />
                 </div>
 
                 <div className="mt-6 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
