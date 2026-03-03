@@ -135,7 +135,7 @@ export default function App() {
     startDate: defaultRange.startDate,
     endDate: defaultRange.endDate,
     sources: [...SOURCES_ALLOWED],
-    sourcesComenzi: []
+    sourcesComenzi: [...SOURCES_ALLOWED]
   });
 
   // State pentru setări (încărcat din API la deschidere tab)
@@ -391,13 +391,13 @@ export default function App() {
                 <StatCard label="Total Comenzi" value={report.comenzi.n_total} icon={ShoppingCart} color="emerald" />
                 <StatCard 
                   label="Venit Total" 
-                  value={formatCurrencyOrDash(report.comenzi.financials.total_pret_client, report.comenzi.financials.mixedCurrencies ? '' : '€')} 
+                  value={formatCurrencyOrDash(report.comenzi.financials.total_pret_client, '€')} 
                   subValue={report.comenzi.financials.valid_price_count != null ? `Avg: ${formatCurrencyOrDash(report.comenzi.financials.avg_pret_client, '€')} / cursă (n=${report.comenzi.financials.valid_price_count})` : '—'}
                   color="emerald" 
                 />
                 <StatCard 
                   label="Profit Total" 
-                  value={formatCurrencyOrDash(report.comenzi.financials.total_profit_all, report.comenzi.financials.mixedCurrencies ? '' : '€')} 
+                  value={formatCurrencyOrDash(report.comenzi.financials.total_profit_all, '€')} 
                   subValue={report.comenzi.financials.valid_profit_count != null ? `Avg: ${formatCurrencyOrDash(report.comenzi.financials.avg_profit, '€')} / cursă (n=${report.comenzi.financials.valid_profit_count})` : '—'}
                   color="emerald" 
                 />

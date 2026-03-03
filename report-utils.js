@@ -4,6 +4,7 @@
  */
 
 const { DateTime } = require('luxon');
+const EXCHANGE_RATE_RON_EUR = 5.1;
 
 // --- Parsing ---
 
@@ -18,6 +19,18 @@ function parseNumberLoose(val) {
   }
   const num = parseFloat(str);
   return isNaN(num) ? null : num;
+}
+
+function isRonCurrency(currencyLabel) {
+  const normalized = String(currencyLabel || '').toUpperCase();
+  return normalized.includes('RON') || normalized.includes('LEI');
+}
+
+function convertToEur(value, currencyLabel) {
+  if (value === null || value === undefined) return null;
+  const numeric = Number(value);
+  if (isNaN(numeric)) return null;
+  return isRonCurrency(currencyLabel) ? numeric / EXCHANGE_RATE_RON_EUR : numeric;
 }
 
 /**
@@ -126,6 +139,9 @@ function computeFinancials(validComenzi, colIds = {}) {
     const pret = getNumericColumnValue(colValues, dealValue);
     const profit = getNumericColumnValue(colValues, profitFormula);
     const profitability = getNumericColumnValue(colValues, profitabilityFormula);
+    const currencyLabel = getStatusLabel(colValues, monedaCursa) || 'EUR';
+    const pretEur = convertToEur(pret, currencyLabel);
+    const profitEur = convertToEur(profit, currencyLabel);
 
     if (profit !== null) {
       profit_from_formula_count++;
@@ -138,14 +154,12 @@ function computeFinancials(validComenzi, colIds = {}) {
       count_profitability_formula++;
     }
 
-    const currencyLabel = getStatusLabel(colValues, monedaCursa) || 'EUR';
-
-    if (pret !== null) {
-      total_pret_client += pret;
+    if (pretEur !== null) {
+      total_pret_client += pretEur;
       valid_price_count++;
     }
-    if (profit !== null) {
-      total_profit_all += profit;
+    if (profitEur !== null) {
+      total_profit_all += profitEur;
       valid_profit_count++;
     }
 
@@ -185,7 +199,8 @@ function computeFinancials(validComenzi, colIds = {}) {
       : null,
     valid_price_count,
     valid_profit_count,
-    valid_profitability_count: count_profitability_formula
+    valid_profitability_count: count_profitability_formula,
+    exchange_rate_ron_eur: EXCHANGE_RATE_RON_EUR
   };
 
   const financialsByCurrency = {};
@@ -237,5 +252,8 @@ module.exports = {
   normalizeToISODate,
   isDateInRange,
   computeFinancials,
-  getStatusLabel
+  getStatusLabel,
+  isRonCurrency,
+  convertToEur,
+  EXCHANGE_RATE_RON_EUR
 };
