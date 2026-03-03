@@ -81,7 +81,7 @@ const getColValue = (colValues, colId) => {
   const t = cleanDisplayString(col.text);
   if (t) return t;
 
-  // 2) typed fields fallback
+  // 2) typed fields fallback (status/formula/mirror/date/number)
   for (const typedVal of [col.label, col.display_value, col.number, col.date]) {
     const extracted = extractDisplayValue(typedVal);
     if (extracted) return extracted;
@@ -157,6 +157,7 @@ async function fetchBoardItems(boardId, options = {}) {
               ... on NumbersValue { number symbol }
               ... on DateValue { date }
               ... on StatusValue { label }
+              ... on MirrorValue { display_value }
             }
           }
         }
