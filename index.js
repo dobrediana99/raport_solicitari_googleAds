@@ -326,7 +326,7 @@ const makeFacturiRow = (item, options = {}) => {
   if (dataScadenta) {
     const dueDate = toDayStart(dataScadenta);
     const diff = Math.floor(referenceDate.diff(dueDate, 'days').days);
-    if (diff > 0) {
+    if (diff >= 0) {
       overdueDays = diff;
       zileDepasireScadenta = diff;
       zileScadentaInfo = `${diff} zile depasire`;
