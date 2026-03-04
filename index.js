@@ -22,6 +22,11 @@ const BOARD_COMENZI = 2030349838;
 const DEFAULT_REPORT_SOURCES = ['website', 'Telefon / WhatsApp Fix', 'newsletter'];
 const AUTO_REPORT_RECIPIENTS = ['rafael.o@crystal-logistics-services.com'];
 const AUTO_REPORT_SUBJECT_TEMPLATE = 'Raport GoogleAds + Facturi Scadente – {start} – {end}';
+const AUTO_REPORT_RECIPIENTS_NO_FACTURI = [
+  'andrei.focsaneanu@sinaps.ro',
+  'andreea.lisei@sinaps.ro'
+];
+const AUTO_REPORT_SUBJECT_TEMPLATE_NO_FACTURI = 'Raport GoogleAds – {start} – {end}';
 const AUTO_REPORT_CRON_EXPRESSION = '0 8 * * 1'; // Luni la 08:00 (Europe/Bucharest)
 
 // ====================================================
@@ -1188,23 +1193,29 @@ const transporter = nodemailer.createTransport({
   auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD }
 });
 
-async function sendReportEmail(reportData, excelBuffer) {
+async function sendReportEmail(reportData, excelBuffer, options = {}) {
+  const {
+    recipients = AUTO_REPORT_RECIPIENTS,
+    subjectTemplate = AUTO_REPORT_SUBJECT_TEMPLATE,
+    attachmentPrefix = 'Raport_googleAds_facturi',
+    bodyLabel = 'GoogleAds + Facturi Scadente'
+  } = options;
   const { start, end } = reportData.metadata.period;
-  const subject = AUTO_REPORT_SUBJECT_TEMPLATE.replace('{start}', start).replace('{end}', end);
+  const subject = subjectTemplate.replace('{start}', start).replace('{end}', end);
   const text = [
     'Salut,',
     '',
-    `Atasat este raportul GoogleAds + Facturi Scadente pentru perioada ${start} - ${end}.`,
+    `Atasat este raportul ${bodyLabel} pentru perioada ${start} - ${end}.`,
     '',
     'Mulțumesc.'
   ].join('\n');
 
   await transporter.sendMail({
     from: EMAIL_FROM,
-    to: AUTO_REPORT_RECIPIENTS.join(', '),
+    to: recipients.join(', '),
     subject,
     text,
-    attachments: [{ filename: `Raport_googleAds_facturi_${start}_${end}.xlsx`, content: excelBuffer }]
+    attachments: [{ filename: `${attachmentPrefix}_${start}_${end}.xlsx`, content: excelBuffer }]
   });
 }
 
@@ -1231,6 +1242,19 @@ async function runAutomatedWeeklyReport() {
   });
   const buffer = await generateExcelBuffer(report);
   await sendReportEmail(report, buffer);
+
+  // Secondary recipients get the same period report without invoice sheets/data.
+  if (AUTO_REPORT_RECIPIENTS_NO_FACTURI.length > 0) {
+    const reportNoFacturi = { ...report };
+    delete reportNoFacturi.facturi_scadente;
+    const bufferNoFacturi = await generateExcelBuffer(reportNoFacturi);
+    await sendReportEmail(reportNoFacturi, bufferNoFacturi, {
+      recipients: AUTO_REPORT_RECIPIENTS_NO_FACTURI,
+      subjectTemplate: AUTO_REPORT_SUBJECT_TEMPLATE_NO_FACTURI,
+      attachmentPrefix: 'Raport_googleAds',
+      bodyLabel: 'GoogleAds'
+    });
+  }
   return { start, end };
 }
 
