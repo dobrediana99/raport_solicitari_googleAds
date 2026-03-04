@@ -59,6 +59,8 @@ const FACTURI_STATUS_INCASAT_INDEXES = [1]; // Incasata
 const FACTURI_DATA_INCASARII_COLUMN_ID = 'date_mkv05mkx';
 const FACTURI_COLUMN_IDS_SUMMARY = [
   'color_mkv5g682',
+  'color_mkxtd25m',
+  'text_mky4r781',
   'date_mkyhsbh4',
   'date_mkv05mkx',
   'deal_creation_date',
@@ -70,6 +72,8 @@ const FACTURI_COLUMN_IDS_SUMMARY = [
 ];
 const FACTURI_COLUMN_IDS_DETAILS = [
   'color_mkv5g682',
+  'color_mkxtd25m',
+  'text_mky4r781',
   'date_mkyhsbh4',
   'date_mkv05mkx',
   'deal_creation_date',
@@ -270,6 +274,24 @@ const normalizeMissing = (value) => {
   return value === '(necompletat)' ? '' : value;
 };
 
+const normalizeInvoiceStatus = (value) => {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+};
+
+const isFacturaEmisa = (statusGenerareFactura, nrFactura) => {
+  const normalizedStatus = normalizeInvoiceStatus(statusGenerareFactura);
+  if (normalizedStatus.includes('emisa') && normalizedStatus.includes('trimisa')) return true;
+
+  const normalizedNr = normalizeMissing(nrFactura);
+  if (normalizedNr && String(normalizedNr).trim()) return true;
+
+  return false;
+};
+
 const pickFirstDate = (colValues, ids) => {
   for (const id of ids) {
     const dateStr = reportUtils.extractDate(colValues, id, { zone: TZ });
@@ -285,6 +307,8 @@ const makeFacturiRow = (item, options = {}) => {
   const cols = item.column_values || [];
   const statusPlataRaw = getColValue(cols, 'color_mkv5g682');
   const statusPlata = reportUtils.normalizePaymentStatus(statusPlataRaw);
+  const statusGenerareFactura = getColValue(cols, 'color_mkxtd25m');
+  const nrFactura = getColValue(cols, 'text_mky4r781');
   const pretClient = reportUtils.getNumericColumnValue(cols, 'deal_value');
   const moneda = normalizeCurrency(getColValue(cols, 'color_mkse3amh'));
   const dataScadenta = reportUtils.extractDate(cols, 'date_mkyhsbh4', { zone: TZ });
@@ -342,7 +366,10 @@ const makeFacturiRow = (item, options = {}) => {
     overdue_days: overdueDays,
     days_to_due: daysToDue,
     status_plata_client_raw: statusPlataRaw,
-    status_plata_client: statusPlata
+    status_plata_client: statusPlata,
+    status_generare_factura: statusGenerareFactura,
+    nr_factura: nrFactura,
+    are_factura_emisa: isFacturaEmisa(statusGenerareFactura, nrFactura)
   };
 };
 
@@ -489,6 +516,7 @@ function buildFacturiScadenteReport(input, options = {}) {
 
   const counters = {
     unpaid_missing_due_date: 0,
+    unpaid_overdue_without_invoice: 0,
     paid_missing_collection_date: 0,
     cashflow_missing_due_date_for_delay: 0
   };
@@ -502,6 +530,10 @@ function buildFacturiScadenteReport(input, options = {}) {
 
     if (status === 'neincasat') {
       if (row.overdue_days !== null) {
+        if (!row.are_factura_emisa) {
+          counters.unpaid_overdue_without_invoice++;
+          return;
+        }
         const overdueKey = reportUtils.getOverdueBucket(row.overdue_days);
         if (overdueKey && overdueBuckets[overdueKey]) addFacturiRowToBucket(overdueBuckets[overdueKey], row);
       } else if (row.days_to_due !== null) {
@@ -991,6 +1023,7 @@ async function generateExcelBuffer(reportData) {
     styleRowBorders(countersTitle);
     [
       ['Neincasate fara data scadenta', facturi.counters.unpaid_missing_due_date],
+      ['Neincasate restante fara factura emisa', facturi.counters.unpaid_overdue_without_invoice],
       ['Incasate fara data incasarii', facturi.counters.paid_missing_collection_date],
       ['Incasari in perioada fara data scadenta (pt delay)', facturi.counters.cashflow_missing_due_date_for_delay]
     ].forEach(([label, value]) => {
@@ -1016,6 +1049,8 @@ async function generateExcelBuffer(reportData) {
       'Observatii interne',
       'Termen plata client',
       'Conditii plata client',
+      'Nr. factura',
+      'Status generare factura',
       'Data scadenta',
       'Data emiterii facturii',
       'Zile depasire / pana la scadenta',
@@ -1025,7 +1060,7 @@ async function generateExcelBuffer(reportData) {
     sheetFacturiDetalii.columns = [
       { width: 30 }, { width: 28 }, { width: 13 }, { width: 12 }, { width: 18 }, { width: 18 }, { width: 18 },
       { width: 28 }, { width: 14 }, { width: 10 }, { width: 12 }, { width: 32 }, { width: 14 }, { width: 18 },
-      { width: 13 }, { width: 16 }, { width: 22 }, { width: 13 }, { width: 15 }
+      { width: 14 }, { width: 20 }, { width: 13 }, { width: 16 }, { width: 22 }, { width: 13 }, { width: 15 }
     ];
     const detailsHeader = sheetFacturiDetalii.addRow(detailHeaders);
     detailsHeader.font = { bold: true };
@@ -1050,6 +1085,8 @@ async function generateExcelBuffer(reportData) {
             normalizeMissing(rowData.observatii_interne),
             rowData.termen_plata_client,
             normalizeMissing(rowData.conditii_plata_client),
+            normalizeMissing(rowData.nr_factura),
+            normalizeMissing(rowData.status_generare_factura),
             normalizeMissing(rowData.data_scadenta),
             normalizeMissing(rowData.data_emitere_factura),
             normalizeMissing(rowData.zile_scadenta_info),
