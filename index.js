@@ -481,6 +481,7 @@ async function fetchBoardItems(boardId, options = {}) {
               ... on NumbersValue { number symbol }
               ... on DateValue { date }
               ... on StatusValue { label }
+              ... on BoardRelationValue { display_value }
               ... on MirrorValue { display_value }
             }
           }
