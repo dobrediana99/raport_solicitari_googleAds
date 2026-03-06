@@ -80,6 +80,7 @@ const FACTURI_COLUMN_IDS_DETAILS = [
   'color_mkxtd25m',
   'text_mky4r781',
   'date_mkyhsbh4',
+  'date_mkvyt36d',
   'date_mkv05mkx',
   'deal_creation_date',
   'date_mkxcj9sp',
@@ -94,6 +95,14 @@ const FACTURI_COLUMN_IDS_DETAILS = [
   'long_text_mksezgvz',
   'numeric_mksek8d2',
   'color_mksex1w8',
+  'text_mksv7kwg',
+  'color_mkseanqh',
+  'color_mkse642z',
+  'numeric_mkpknkjp',
+  'color_mkt9as8p',
+  'numeric_mksev08g',
+  'file_mkseqket',
+  'color_mksv1jpm',
   'board_relation_mkpw4bcs'
 ];
 const SOLICITARI_COLUMN_IDS = [
@@ -279,6 +288,12 @@ const normalizeMissing = (value) => {
   return value === '(necompletat)' ? '' : value;
 };
 
+const hasPositiveClientPrice = (priceValue) => {
+  if (priceValue === null || priceValue === undefined) return false;
+  const n = Number(priceValue);
+  return Number.isFinite(n) && n > 0;
+};
+
 const normalizeInvoiceStatus = (value) => {
   return String(value ?? '')
     .normalize('NFD')
@@ -345,11 +360,7 @@ const makeFacturiRow = (item, options = {}) => {
   return {
     item_id: item.id,
     item_name: item.name,
-    nume_companie: (() => {
-      const company = getColValue(cols, 'board_relation_mkpw4bcs');
-      if (company === '(necompletat)') return item.name || '(necompletat)';
-      return company;
-    })(),
+    nume_companie: getColValue(cols, 'board_relation_mkpw4bcs'),
     data_ctr: dataCtr || '(necompletat)',
     nr_cursa: getColValue(cols, 'pulse_id_mks1dcwz'),
     nume_principal: getColValue(cols, 'deal_owner'),
@@ -362,6 +373,19 @@ const makeFacturiRow = (item, options = {}) => {
     observatii_interne: getColValue(cols, 'long_text_mksezgvz'),
     termen_plata_client: reportUtils.getNumericColumnValue(cols, 'numeric_mksek8d2'),
     conditii_plata_client: getColValue(cols, 'color_mksex1w8'),
+    data_descarcare: (() => {
+      const textDate = getColValue(cols, 'text_mksv7kwg');
+      if (textDate !== '(necompletat)') return textDate;
+      const fallbackDate = reportUtils.extractDate(cols, 'date_mkvyt36d', { zone: TZ });
+      return fallbackDate || '(necompletat)';
+    })(),
+    trimite_originale_clientului: getColValue(cols, 'color_mkseanqh'),
+    motiv_plata_termen: getColValue(cols, 'color_mkse642z'),
+    pret_furnizor: reportUtils.getNumericColumnValue(cols, 'numeric_mkpknkjp'),
+    furnizor_pe: getColValue(cols, 'color_mkt9as8p'),
+    plata_la_furnizor: reportUtils.getNumericColumnValue(cols, 'numeric_mksev08g'),
+    pod: getColValue(cols, 'file_mkseqket'),
+    plata_furnizor: getColValue(cols, 'color_mksv1jpm'),
     data_scadenta: dataScadenta || '(necompletat)',
     data_emitere_factura: dataEmitereFactura || '(necompletat)',
     data_incasarii: dataIncasarii || '(necompletat)',
@@ -523,13 +547,18 @@ function buildFacturiScadenteReport(input, options = {}) {
     unpaid_missing_due_date: 0,
     unpaid_overdue_without_invoice: 0,
     paid_missing_collection_date: 0,
-    cashflow_missing_due_date_for_delay: 0
+    cashflow_missing_due_date_for_delay: 0,
+    skipped_zero_client_price: 0
   };
 
   const statusDistribution = {};
 
   unpaidItems.forEach(item => {
     const row = makeFacturiRow(item, { referenceDate });
+    if (!hasPositiveClientPrice(row.pret_client)) {
+      counters.skipped_zero_client_price++;
+      return;
+    }
     const status = row.status_plata_client || 'nespecificat';
     statusDistribution[status] = (statusDistribution[status] || 0) + 1;
 
@@ -552,6 +581,10 @@ function buildFacturiScadenteReport(input, options = {}) {
 
   paidItemsInPeriod.forEach(item => {
     const row = makeFacturiRow(item, { referenceDate });
+    if (!hasPositiveClientPrice(row.pret_client)) {
+      counters.skipped_zero_client_price++;
+      return;
+    }
     const status = row.status_plata_client || 'nespecificat';
     statusDistribution[status] = (statusDistribution[status] || 0) + 1;
 
@@ -1029,6 +1062,7 @@ async function generateExcelBuffer(reportData) {
     [
       ['Neincasate fara data scadenta', facturi.counters.unpaid_missing_due_date],
       ['Neincasate restante fara factura emisa', facturi.counters.unpaid_overdue_without_invoice],
+      ['Ignorate: pret client <= 0', facturi.counters.skipped_zero_client_price],
       ['Incasate fara data incasarii', facturi.counters.paid_missing_collection_date],
       ['Incasari in perioada fara data scadenta (pt delay)', facturi.counters.cashflow_missing_due_date_for_delay]
     ].forEach(([label, value]) => {
@@ -1054,8 +1088,16 @@ async function generateExcelBuffer(reportData) {
       'Observatii interne',
       'Termen plata client',
       'Conditii plata client',
+      'Data descarcare',
+      'Trimite originale clientului?',
+      'Motiv plata termen',
       'Nr. factura',
       'Status generare factura',
+      'Pret furnizor',
+      'Furnizor pe',
+      'Plata la (furnizor)',
+      'POD',
+      'Plata furnizor',
       'Data scadenta',
       'Data emiterii facturii',
       'Zile depasire / pana la scadenta',
@@ -1065,7 +1107,8 @@ async function generateExcelBuffer(reportData) {
     sheetFacturiDetalii.columns = [
       { width: 30 }, { width: 28 }, { width: 13 }, { width: 12 }, { width: 18 }, { width: 18 }, { width: 18 },
       { width: 28 }, { width: 14 }, { width: 10 }, { width: 12 }, { width: 32 }, { width: 14 }, { width: 18 },
-      { width: 14 }, { width: 20 }, { width: 13 }, { width: 16 }, { width: 22 }, { width: 13 }, { width: 15 }
+      { width: 14 }, { width: 20 }, { width: 18 }, { width: 14 }, { width: 20 }, { width: 14 }, { width: 13 },
+      { width: 18 }, { width: 18 }, { width: 13 }, { width: 16 }, { width: 22 }, { width: 13 }, { width: 15 }
     ];
     const detailsHeader = sheetFacturiDetalii.addRow(detailHeaders);
     detailsHeader.font = { bold: true };
@@ -1090,8 +1133,16 @@ async function generateExcelBuffer(reportData) {
             normalizeMissing(rowData.observatii_interne),
             rowData.termen_plata_client,
             normalizeMissing(rowData.conditii_plata_client),
+            normalizeMissing(rowData.data_descarcare),
+            normalizeMissing(rowData.trimite_originale_clientului),
+            normalizeMissing(rowData.motiv_plata_termen),
             normalizeMissing(rowData.nr_factura),
             normalizeMissing(rowData.status_generare_factura),
+            rowData.pret_furnizor,
+            normalizeMissing(rowData.furnizor_pe),
+            rowData.plata_la_furnizor,
+            normalizeMissing(rowData.pod),
+            normalizeMissing(rowData.plata_furnizor),
             normalizeMissing(rowData.data_scadenta),
             normalizeMissing(rowData.data_emitere_factura),
             normalizeMissing(rowData.zile_scadenta_info),
@@ -1101,6 +1152,8 @@ async function generateExcelBuffer(reportData) {
           styleRowBorders(row);
           row.getCell(9).numFmt = '#,##0.00';
           row.getCell(13).numFmt = '#,##0';
+          row.getCell(20).numFmt = '#,##0.00';
+          row.getCell(22).numFmt = '#,##0';
         });
       });
     };
