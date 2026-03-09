@@ -180,7 +180,8 @@ export default function App() {
         body: JSON.stringify({
           startDate: filters.startDate,
           endDate: filters.endDate,
-          includeDetails: false
+          includeDetails: false,
+          includeFurnizori: true
         })
       })
         .then(async (facturiResponse) => {
@@ -191,10 +192,14 @@ export default function App() {
           return facturiResponse.json();
         })
         .then((facturiData) => {
-          setReport(prev => ({ ...(prev || data), facturi_scadente: facturiData.facturi_scadente }));
+          setReport(prev => ({
+            ...(prev || data),
+            facturi_scadente: facturiData.facturi_scadente,
+            plati_furnizori: facturiData.plati_furnizori
+          }));
         })
         .catch((facturiErr) => {
-          setFacturiError(facturiErr.message || 'Nu s-a putut încărca secțiunea Facturi Scadente.');
+          setFacturiError(facturiErr.message || 'Nu s-au putut încărca secțiunile Facturi / Furnizori.');
         })
         .finally(() => {
           setLoadingFacturi(false);
@@ -331,13 +336,13 @@ export default function App() {
 
         {loadingFacturi && report && (
           <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-xl text-sm font-semibold">
-            Secțiunea Facturi Scadente se încarcă...
+            Secțiunile Facturi Scadente / Plăți Furnizori se încarcă...
           </div>
         )}
 
         {facturiError && report && (
           <div className="mb-6 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl text-sm font-semibold">
-            Facturi Scadente: {facturiError}
+            Facturi Scadente / Plăți Furnizori: {facturiError}
           </div>
         )}
 
@@ -587,6 +592,103 @@ export default function App() {
                   <p>Restanțe: {formatCurrencyMap(report.facturi_scadente.overdue?.totals?.total_by_currency)}</p>
                   <p>Scadențe viitoare: {formatCurrencyMap(report.facturi_scadente.upcoming?.totals?.total_by_currency)}</p>
                   <p>Încasat în perioadă: {formatCurrencyMap(report.facturi_scadente.cashflow?.collected_in_period?.total_by_currency)}</p>
+                </div>
+              </section>
+            )}
+
+            {report.plati_furnizori && (
+              <section className="pt-8 border-t border-slate-200">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-1.5 bg-violet-600 rounded-full"></div>
+                    <h2 className="text-2xl font-black text-slate-800 tracking-tight">Plăți Furnizori</h2>
+                  </div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-white px-4 py-2 rounded-full border border-slate-200">
+                    Data referință: {report.plati_furnizori.metadata?.reference_date || '—'}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                  <StatCard
+                    label="Restante Neplătite"
+                    value={report.plati_furnizori.overdue?.totals?.item_count ?? 0}
+                    subValue={`Total: ${formatCurrencyOrDash(report.plati_furnizori.overdue?.totals?.total_pret_client_eur, '€')}`}
+                    icon={AlertCircle}
+                    color="rose"
+                  />
+                  <StatCard
+                    label="Scadente Viitoare"
+                    value={report.plati_furnizori.upcoming?.totals?.item_count ?? 0}
+                    subValue={`Total: ${formatCurrencyOrDash(report.plati_furnizori.upcoming?.totals?.total_pret_client_eur, '€')}`}
+                    icon={Calendar}
+                    color="amber"
+                  />
+                  <StatCard
+                    label="Plătit în Perioadă"
+                    value={formatCurrencyOrDash(report.plati_furnizori.cashflow?.collected_in_period?.total_pret_client_eur, '€')}
+                    subValue={`${report.plati_furnizori.cashflow?.collected_in_period?.item_count ?? 0} itemi`}
+                    icon={CheckCircle2}
+                    color="emerald"
+                  />
+                  <StatCard
+                    label="Întârziere > 90 zile"
+                    value={report.plati_furnizori.cashflow?.delay_buckets?.over_90?.item_count ?? 0}
+                    subValue="din cele plătite în perioadă"
+                    icon={AlertCircle}
+                    color="rose"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <TableBreakdown title="Restanțe Furnizori după Scadență" data={report.plati_furnizori.overdue?.summary || []} showFullText />
+                  <TableBreakdown title="Scadențe Viitoare Furnizori" data={report.plati_furnizori.upcoming?.summary || []} showFullText />
+                  <TableBreakdown title="Delay Plată Furnizori" data={report.plati_furnizori.cashflow?.delay_summary || []} showFullText />
+                </div>
+
+                <div className="mt-6 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
+                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">Top Restanțe Furnizori {`>`} 90 zile (neplătite)</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="text-[10px] text-slate-400 uppercase">
+                        <tr>
+                          <th className="px-4 py-3 text-left">Furnizor</th>
+                          <th className="px-4 py-3 text-left">Nr. Cursă</th>
+                          <th className="px-4 py-3 text-left">Data Scadență</th>
+                          <th className="px-4 py-3 text-right">Zile Depășire</th>
+                          <th className="px-4 py-3 text-right">Preț Furnizor</th>
+                          <th className="px-4 py-3 text-left">Monedă</th>
+                          <th className="px-4 py-3 text-left">Principal</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {(report.plati_furnizori.overdue?.buckets?.over_90?.items || []).slice(0, 10).map((row, idx) => (
+                          <tr key={`${row.item_id || 'row'}-${idx}`} className="hover:bg-slate-50">
+                            <td className="px-4 py-3 font-medium text-slate-700">{row.nume_companie || '—'}</td>
+                            <td className="px-4 py-3">{row.nr_cursa || '—'}</td>
+                            <td className="px-4 py-3">{row.data_scadenta || '—'}</td>
+                            <td className="px-4 py-3 text-right font-bold">{row.zile_depasire_scadenta ?? '—'}</td>
+                            <td className="px-4 py-3 text-right">{formatCurrencyOrDash(row.pret_furnizor ?? row.pret_client, '')}</td>
+                            <td className="px-4 py-3">{row.moneda || '—'}</td>
+                            <td className="px-4 py-3">{row.nume_principal || '—'}</td>
+                          </tr>
+                        ))}
+                        {(report.plati_furnizori.overdue?.buckets?.over_90?.items || []).length === 0 && (
+                          <tr>
+                            <td className="px-4 py-4 text-slate-400" colSpan={7}>Nu există plăți furnizori în bucket-ul {`>`} 90 zile.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="mt-4 p-4 bg-slate-100 rounded-xl border border-slate-200 text-xs text-slate-600">
+                  <p className="font-bold mb-1">Totaluri pe monedă</p>
+                  <p>Restanțe: {formatCurrencyMap(report.plati_furnizori.overdue?.totals?.total_by_currency)}</p>
+                  <p>Scadențe viitoare: {formatCurrencyMap(report.plati_furnizori.upcoming?.totals?.total_by_currency)}</p>
+                  <p>Plătit în perioadă: {formatCurrencyMap(report.plati_furnizori.cashflow?.collected_in_period?.total_by_currency)}</p>
                 </div>
               </section>
             )}
