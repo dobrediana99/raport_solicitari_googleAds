@@ -278,6 +278,7 @@ function getUpcomingBucket(daysToDue) {
 
 function getCollectionDelayBucket(delayDays) {
   if (typeof delayDays !== 'number' || !Number.isFinite(delayDays)) return null;
+  if (delayDays < 0) return 'before_due';
   if (delayDays <= 3) return 'max_3';
   if (delayDays <= 15) return 'days_3_15';
   if (delayDays <= 30) return 'days_15_30';

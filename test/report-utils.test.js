@@ -250,7 +250,7 @@ describe('invoice buckets', () => {
   });
 
   it('maps collection delays to expected ranges', () => {
-    assert.strictEqual(getCollectionDelayBucket(-1), 'max_3');
+    assert.strictEqual(getCollectionDelayBucket(-1), 'before_due');
     assert.strictEqual(getCollectionDelayBucket(3), 'max_3');
     assert.strictEqual(getCollectionDelayBucket(4), 'days_3_15');
     assert.strictEqual(getCollectionDelayBucket(15), 'days_3_15');

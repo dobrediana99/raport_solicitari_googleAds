@@ -50,18 +50,50 @@ const FACTURI_UPCOMING_BUCKETS = [
 ];
 
 const FACTURI_COLLECTION_DELAY_BUCKETS = [
+  { key: 'before_due', label: 'Incasate inainte de scadenta' },
   { key: 'max_3', label: 'Incasate in max 3 zile de la scadenta' },
   { key: 'days_3_15', label: 'Incasate intre 3-15 zile de la scadenta' },
   { key: 'days_15_30', label: 'Incasate intre 15-30 zile de la scadenta' },
   { key: 'days_30_60', label: 'Incasate intre 30-60 zile de la scadenta' },
   { key: 'days_60_90', label: 'Incasate intre 60-90 zile de la scadenta' },
-  { key: 'over_90', label: 'Incasate dupa peste 90 zile de la scadenta' }
+  { key: 'over_90', label: 'Incasate dupa peste 90 zile de la scadenta' },
+  { key: 'missing_due', label: 'Incasate fara data scadenta' }
+];
+
+const PLATI_FURNIZORI_OVERDUE_BUCKETS = [
+  { key: 'over_90', label: 'Scadenta furnizor depasita peste 90 zile' },
+  { key: 'between_90_60', label: 'Scadenta furnizor depasita intre 90-60 zile' },
+  { key: 'between_60_30', label: 'Scadenta furnizor depasita intre 60-30 zile' },
+  { key: 'between_30_15', label: 'Scadenta furnizor depasita intre 30-15 zile' },
+  { key: 'between_15_0', label: 'Scadenta furnizor depasita intre 0-15 zile' }
+];
+
+const PLATI_FURNIZORI_UPCOMING_BUCKETS = [
+  { key: 'due_0_5', label: 'Scadenta furnizor in 0-5 zile' },
+  { key: 'due_5_15', label: 'Scadenta furnizor in 5-15 zile' },
+  { key: 'due_15_60', label: 'Scadenta furnizor in 15-60 zile' }
+];
+
+const PLATI_FURNIZORI_DELAY_BUCKETS = [
+  { key: 'before_due', label: 'Platite inainte de scadenta' },
+  { key: 'max_3', label: 'Platite in max 3 zile de la scadenta' },
+  { key: 'days_3_15', label: 'Platite intre 3-15 zile de la scadenta' },
+  { key: 'days_15_30', label: 'Platite intre 15-30 zile de la scadenta' },
+  { key: 'days_30_60', label: 'Platite intre 30-60 zile de la scadenta' },
+  { key: 'days_60_90', label: 'Platite intre 60-90 zile de la scadenta' },
+  { key: 'over_90', label: 'Platite dupa peste 90 zile de la scadenta' },
+  { key: 'missing_due', label: 'Platite fara data scadenta furnizor' }
 ];
 
 const FACTURI_STATUS_PLATA_COLUMN_ID = 'color_mkv5g682';
 const FACTURI_STATUS_NEINCASAT_INDEXES = [0, 3]; // Neincasat + Litigiu (Neincasat)
-const FACTURI_STATUS_INCASAT_INDEXES = [1]; // Incasata
+const FACTURI_STATUS_INCASAT_INDEXES = [1, 6]; // Incasata + Incasata Partial
 const FACTURI_DATA_INCASARII_COLUMN_ID = 'date_mkv05mkx';
+
+const FURNIZORI_STATUS_PLATA_COLUMN_ID = 'color_mksv1jpm';
+const FURNIZORI_STATUS_NEPLATIT_INDEXES = [5]; // Neplatit
+const FURNIZORI_STATUS_PLATIT_INDEXES = [1, 0]; // Platit + Achitat Partial
+const FURNIZORI_DATA_PLATII_COLUMN_ID = 'date_mkv0ybzt';
 const FACTURI_COLUMN_IDS_SUMMARY = [
   'color_mkv5g682',
   'color_mkxtd25m',
@@ -104,6 +136,45 @@ const FACTURI_COLUMN_IDS_DETAILS = [
   'file_mkseqket',
   'color_mksv1jpm',
   'board_relation_mkpw4bcs'
+];
+
+const FURNIZORI_COLUMN_IDS_SUMMARY = [
+  'color_mksv1jpm',
+  'date_mkxtsgp8',
+  'date_mkv0ybzt',
+  'deal_creation_date',
+  'pulse_id_mks1dcwz',
+  'deal_owner',
+  'numeric_mkpknkjp',
+  'color_mkse3amh',
+  'board_relation_mkse9rp2',
+  'file_mksegx89'
+];
+
+const FURNIZORI_COLUMN_IDS_DETAILS = [
+  'color_mksv1jpm',
+  'date_mkxtsgp8',
+  'date_mkv0ybzt',
+  'deal_creation_date',
+  'date_mkxcj9sp',
+  'pulse_id_mks1dcwz',
+  'deal_owner',
+  'multiple_person_mkt9b24z',
+  'color_mktcvtpz',
+  'email_mkvneqyg',
+  'numeric_mkpknkjp',
+  'color_mkse3amh',
+  'color_mkt9as8p',
+  'long_text_mksezgvz',
+  'numeric_mksev08g',
+  'color_mksed6qr',
+  'text_mksv7kwg',
+  'date_mkvyt36d',
+  'color_mkseanqh',
+  'color_mkse642z',
+  'file_mksegx89',
+  'file_mkseqket',
+  'board_relation_mkse9rp2'
 ];
 const SOLICITARI_COLUMN_IDS = [
   'deal_creation_date',
@@ -294,6 +365,12 @@ const hasPositiveClientPrice = (priceValue) => {
   return Number.isFinite(n) && n > 0;
 };
 
+const hasPositiveAmount = (value) => {
+  if (value === null || value === undefined) return false;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0;
+};
+
 const normalizeInvoiceStatus = (value) => {
   return String(value ?? '')
     .normalize('NFD')
@@ -309,6 +386,28 @@ const isFacturaEmisa = (statusGenerareFactura, nrFactura) => {
   const normalizedNr = normalizeMissing(nrFactura);
   if (normalizedNr && String(normalizedNr).trim()) return true;
 
+  return false;
+};
+
+const normalizeSupplierPaymentStatus = (value) => {
+  const normalized = normalizeInvoiceStatus(value);
+  if (!normalized || normalized === '(necompletat)' || normalized === 'necompletat') return null;
+  if (normalized.includes('neplatit')) return 'neplatit';
+  if (normalized.includes('platit') || normalized.includes('achitat')) return 'platit';
+  return normalized;
+};
+
+const isOlderThanDays = (dateIso, referenceDate, days) => {
+  if (!dateIso || dateIso === '(necompletat)') return false;
+  const date = DateTime.fromISO(String(dateIso), { zone: TZ }).startOf('day');
+  if (!date.isValid) return false;
+  const diff = Math.floor(referenceDate.diff(date, 'days').days);
+  return diff > days;
+};
+
+const hasFileValue = (raw) => {
+  const text = normalizeMissing(raw);
+  if (text && String(text).trim()) return true;
   return false;
 };
 
@@ -399,6 +498,85 @@ const makeFacturiRow = (item, options = {}) => {
     status_generare_factura: statusGenerareFactura,
     nr_factura: nrFactura,
     are_factura_emisa: isFacturaEmisa(statusGenerareFactura, nrFactura)
+  };
+};
+
+const makeFurnizorRow = (item, options = {}) => {
+  const { referenceDate } = options;
+  const cols = item.column_values || [];
+  const statusPlataRaw = getColValue(cols, FURNIZORI_STATUS_PLATA_COLUMN_ID);
+  const statusPlata = normalizeSupplierPaymentStatus(statusPlataRaw);
+  const pretFurnizor = reportUtils.getNumericColumnValue(cols, 'numeric_mkpknkjp');
+  const moneda = normalizeCurrency(getColValue(cols, 'color_mkse3amh'));
+  const dataScadenta = reportUtils.extractDate(cols, 'date_mkxtsgp8', { zone: TZ });
+  const dataPlata = reportUtils.extractDate(cols, 'date_mkv0ybzt', { zone: TZ });
+  const dataCtr = reportUtils.extractDate(cols, 'deal_creation_date', { zone: TZ });
+
+  let zileDepasireScadenta = null;
+  let zilePanaLaScadenta = null;
+  let zileScadentaInfo = '(fara data scadenta)';
+  let overdueDays = null;
+  let daysToDue = null;
+
+  if (dataScadenta) {
+    const dueDate = toDayStart(dataScadenta);
+    const diff = Math.floor(referenceDate.diff(dueDate, 'days').days);
+    if (diff >= 0) {
+      overdueDays = diff;
+      zileDepasireScadenta = diff;
+      zileScadentaInfo = `${diff} zile depasire`;
+    } else {
+      daysToDue = Math.abs(diff);
+      zilePanaLaScadenta = Math.abs(diff);
+      zileScadentaInfo = `${Math.abs(diff)} zile pana la scadenta`;
+    }
+  }
+
+  const facturaFurnizor = getColValue(cols, 'file_mksegx89');
+
+  return {
+    item_id: item.id,
+    item_name: item.name,
+    nume_companie: getColValue(cols, 'board_relation_mkse9rp2'),
+    data_ctr: dataCtr || '(necompletat)',
+    nr_cursa: getColValue(cols, 'pulse_id_mks1dcwz'),
+    nume_principal: getColValue(cols, 'deal_owner'),
+    nume_secundar: getColValue(cols, 'multiple_person_mkt9b24z'),
+    sursa_client: getColValue(cols, 'color_mktcvtpz'),
+    email_contabilitate_client: getColValue(cols, 'email_mkvneqyg'),
+    pret_client: pretFurnizor,
+    moneda,
+    client_pe: getColValue(cols, 'color_mkt9as8p'),
+    observatii_interne: getColValue(cols, 'long_text_mksezgvz'),
+    termen_plata_client: reportUtils.getNumericColumnValue(cols, 'numeric_mksev08g'),
+    conditii_plata_client: getColValue(cols, 'color_mksed6qr'),
+    data_descarcare: (() => {
+      const textDate = getColValue(cols, 'text_mksv7kwg');
+      if (textDate !== '(necompletat)') return textDate;
+      const fallbackDate = reportUtils.extractDate(cols, 'date_mkvyt36d', { zone: TZ });
+      return fallbackDate || '(necompletat)';
+    })(),
+    trimite_originale_clientului: getColValue(cols, 'color_mkseanqh'),
+    motiv_plata_termen: getColValue(cols, 'color_mkse642z'),
+    pret_furnizor: pretFurnizor,
+    furnizor_pe: getColValue(cols, 'color_mkt9as8p'),
+    plata_la_furnizor: reportUtils.getNumericColumnValue(cols, 'numeric_mksev08g'),
+    pod: getColValue(cols, 'file_mkseqket'),
+    plata_furnizor: getColValue(cols, 'color_mksv1jpm'),
+    factura_furnizor: facturaFurnizor,
+    data_scadenta: dataScadenta || '(necompletat)',
+    data_emitere_factura: dataCtr || '(necompletat)',
+    data_incasarii: dataPlata || '(necompletat)',
+    zile_depasire_scadenta: zileDepasireScadenta,
+    zile_pana_la_scadenta: zilePanaLaScadenta,
+    zile_scadenta_info: zileScadentaInfo,
+    overdue_days: overdueDays,
+    days_to_due: daysToDue,
+    status_plata_client_raw: statusPlataRaw,
+    status_plata_client: statusPlata,
+    status_generare_factura: '(necompletat)',
+    nr_factura: '(necompletat)',
+    are_factura_emisa: hasFileValue(facturaFurnizor)
   };
 };
 
@@ -556,7 +734,7 @@ function buildFacturiScadenteReport(input, options = {}) {
 
   unpaidItems.forEach(item => {
     const row = makeFacturiRow(item, { referenceDate });
-    if (!hasPositiveClientPrice(row.pret_client)) {
+    if (!hasPositiveAmount(row.pret_client)) {
       counters.skipped_zero_client_price++;
       return;
     }
@@ -566,7 +744,9 @@ function buildFacturiScadenteReport(input, options = {}) {
     if (status === 'neincasat') {
       if (row.overdue_days !== null) {
         if (!row.are_factura_emisa) {
-          counters.unpaid_overdue_without_invoice++;
+          if (isOlderThanDays(row.data_ctr, referenceDate, 30)) {
+            counters.unpaid_overdue_without_invoice++;
+          }
           return;
         }
         const overdueKey = reportUtils.getOverdueBucket(row.overdue_days);
@@ -582,7 +762,7 @@ function buildFacturiScadenteReport(input, options = {}) {
 
   paidItemsInPeriod.forEach(item => {
     const row = makeFacturiRow(item, { referenceDate });
-    if (!hasPositiveClientPrice(row.pret_client)) {
+    if (!hasPositiveAmount(row.pret_client)) {
       counters.skipped_zero_client_price++;
       return;
     }
@@ -610,6 +790,12 @@ function buildFacturiScadenteReport(input, options = {}) {
       }
     } else {
       counters.cashflow_missing_due_date_for_delay++;
+      if (delayBuckets.missing_due) {
+        addFacturiRowToBucket(delayBuckets.missing_due, {
+          ...row,
+          intarziere_incasare_zile: null
+        });
+      }
     }
   });
 
@@ -662,7 +848,160 @@ function buildFacturiScadenteReport(input, options = {}) {
   };
 }
 
-function trimFacturiItemsForSummary(report) {
+function buildPlatiFurnizoriReport(input, options = {}) {
+  const {
+    startDateStr,
+    endDateStr,
+    referenceDateStr
+  } = options;
+  const unpaidItems = Array.isArray(input?.unpaidItems) ? input.unpaidItems : [];
+  const paidItemsInPeriod = Array.isArray(input?.paidItemsInPeriod) ? input.paidItemsInPeriod : [];
+
+  const referenceDate = referenceDateStr
+    ? DateTime.fromISO(referenceDateStr, { zone: TZ }).startOf('day')
+    : DateTime.now().setZone(TZ).startOf('day');
+
+  const cashFlowStart = DateTime.fromISO(startDateStr, { zone: TZ }).startOf('day');
+  const cashFlowEnd = DateTime.fromISO(endDateStr, { zone: TZ }).endOf('day');
+
+  const overdueBuckets = initFacturiBucketMap(PLATI_FURNIZORI_OVERDUE_BUCKETS);
+  const upcomingBuckets = initFacturiBucketMap(PLATI_FURNIZORI_UPCOMING_BUCKETS);
+  const delayBuckets = initFacturiBucketMap(PLATI_FURNIZORI_DELAY_BUCKETS);
+  const paidInPeriod = {
+    key: 'cashflow_paid',
+    label: 'Plati furnizori in perioada analizata',
+    items: [],
+    item_count: 0,
+    total_pret_client_eur: 0,
+    total_by_currency: {}
+  };
+
+  const counters = {
+    unpaid_missing_due_date: 0,
+    unpaid_overdue_without_invoice: 0,
+    paid_missing_collection_date: 0,
+    cashflow_missing_due_date_for_delay: 0,
+    skipped_zero_client_price: 0
+  };
+
+  const statusDistribution = {};
+
+  unpaidItems.forEach(item => {
+    const row = makeFurnizorRow(item, { referenceDate });
+    if (!hasPositiveAmount(row.pret_client)) {
+      counters.skipped_zero_client_price++;
+      return;
+    }
+    const status = row.status_plata_client || 'nespecificat';
+    statusDistribution[status] = (statusDistribution[status] || 0) + 1;
+
+    if (status === 'neplatit') {
+      if (row.overdue_days !== null) {
+        if (!row.are_factura_emisa) {
+          if (isOlderThanDays(row.data_ctr, referenceDate, 30)) {
+            counters.unpaid_overdue_without_invoice++;
+          }
+          return;
+        }
+        const overdueKey = reportUtils.getOverdueBucket(row.overdue_days);
+        if (overdueKey && overdueBuckets[overdueKey]) addFacturiRowToBucket(overdueBuckets[overdueKey], row);
+      } else if (row.days_to_due !== null) {
+        const upcomingKey = reportUtils.getUpcomingBucket(row.days_to_due);
+        if (upcomingKey && upcomingBuckets[upcomingKey]) addFacturiRowToBucket(upcomingBuckets[upcomingKey], row);
+      } else {
+        counters.unpaid_missing_due_date++;
+      }
+    }
+  });
+
+  paidItemsInPeriod.forEach(item => {
+    const row = makeFurnizorRow(item, { referenceDate });
+    if (!hasPositiveAmount(row.pret_client)) {
+      counters.skipped_zero_client_price++;
+      return;
+    }
+    const status = row.status_plata_client || 'nespecificat';
+    statusDistribution[status] = (statusDistribution[status] || 0) + 1;
+
+    if (row.data_incasarii === '(necompletat)') {
+      counters.paid_missing_collection_date++;
+      return;
+    }
+
+    const paymentDate = toDayStart(row.data_incasarii);
+    if (paymentDate < cashFlowStart || paymentDate > cashFlowEnd) return;
+
+    addFacturiRowToBucket(paidInPeriod, row);
+    if (row.data_scadenta !== '(necompletat)') {
+      const dueDate = toDayStart(row.data_scadenta);
+      const delayDays = Math.floor(paymentDate.diff(dueDate, 'days').days);
+      const delayKey = reportUtils.getCollectionDelayBucket(delayDays);
+      if (delayKey && delayBuckets[delayKey]) {
+        addFacturiRowToBucket(delayBuckets[delayKey], {
+          ...row,
+          intarziere_incasare_zile: delayDays
+        });
+      }
+    } else {
+      counters.cashflow_missing_due_date_for_delay++;
+      if (delayBuckets.missing_due) {
+        addFacturiRowToBucket(delayBuckets.missing_due, {
+          ...row,
+          intarziere_incasare_zile: null
+        });
+      }
+    }
+  });
+
+  if (!statusDistribution.platit) {
+    statusDistribution.platit = paidItemsInPeriod.length;
+  }
+  if (!statusDistribution.neplatit && unpaidItems.length > 0) {
+    statusDistribution.neplatit = unpaidItems.length;
+  }
+
+  if (paidItemsInPeriod.length === 0) {
+    counters.paid_missing_collection_date = 0;
+  }
+
+  const overdueSummary = buildFacturiSectionSummary(overdueBuckets);
+  const upcomingSummary = buildFacturiSectionSummary(upcomingBuckets);
+  const delaySummary = buildFacturiSectionSummary(delayBuckets);
+
+  return {
+    metadata: {
+      reference_date: referenceDate.toISODate(),
+      cashflow_period: { start: startDateStr, end: endDateStr },
+      source_counts: {
+        unpaid_items: unpaidItems.length,
+        paid_items_in_period: paidItemsInPeriod.length
+      }
+    },
+    status_distribution: Object.entries(statusDistribution).map(([status, nr]) => ({ status, nr })),
+    counters,
+    overdue: {
+      buckets: overdueBuckets,
+      summary: overdueSummary,
+      totals: buildFacturiSectionTotals(overdueBuckets)
+    },
+    upcoming: {
+      buckets: upcomingBuckets,
+      summary: upcomingSummary,
+      totals: buildFacturiSectionTotals(upcomingBuckets)
+    },
+    cashflow: {
+      collected_in_period: {
+        ...paidInPeriod,
+        total_pret_client_eur: round2(paidInPeriod.total_pret_client_eur)
+      },
+      delay_buckets: delayBuckets,
+      delay_summary: delaySummary,
+      delay_totals: buildFacturiSectionTotals(delayBuckets)
+    }
+  };
+}
+
+function trimAgingItemsForSummary(report) {
   if (!report) return report;
   const clone = JSON.parse(JSON.stringify(report));
   const clearBucketItems = (bucketMap) => {
@@ -714,7 +1053,38 @@ async function buildFacturiScadenteData(startDateStr, endDateStr, options = {}) 
     endDateStr
   });
 
-  return includeDetails ? fullReport : trimFacturiItemsForSummary(fullReport);
+  return includeDetails ? fullReport : trimAgingItemsForSummary(fullReport);
+}
+
+async function buildPlatiFurnizoriData(startDateStr, endDateStr, options = {}) {
+  const { includeDetails = true } = options;
+  const selectedColumns = includeDetails ? FURNIZORI_COLUMN_IDS_DETAILS : FURNIZORI_COLUMN_IDS_SUMMARY;
+  const furnizoriNeplatitiQueryParams = buildStatusQueryParams(
+    FURNIZORI_STATUS_PLATA_COLUMN_ID,
+    FURNIZORI_STATUS_NEPLATIT_INDEXES
+  );
+  const furnizoriPlatitiInPerioadaQueryParams = buildStatusAndDateQueryParams(
+    FURNIZORI_STATUS_PLATA_COLUMN_ID,
+    FURNIZORI_STATUS_PLATIT_INDEXES,
+    FURNIZORI_DATA_PLATII_COLUMN_ID,
+    startDateStr,
+    endDateStr
+  );
+
+  const [rawFurnizoriNeplatiti, rawFurnizoriPlatitiInPerioada] = await Promise.all([
+    getAllItems(BOARD_COMENZI, furnizoriNeplatitiQueryParams, selectedColumns),
+    getAllItems(BOARD_COMENZI, furnizoriPlatitiInPerioadaQueryParams, selectedColumns)
+  ]);
+
+  const fullReport = buildPlatiFurnizoriReport({
+    unpaidItems: rawFurnizoriNeplatiti,
+    paidItemsInPeriod: rawFurnizoriPlatitiInPerioada
+  }, {
+    startDateStr,
+    endDateStr
+  });
+
+  return includeDetails ? fullReport : trimAgingItemsForSummary(fullReport);
 }
 
 // ====================================================
@@ -796,11 +1166,15 @@ async function buildReport(startDateStr, endDateStr, sources, options = {}) {
   const facturiPromise = includeFacturi
     ? buildFacturiScadenteData(startDateStr, endDateStr, { includeDetails: includeFacturiDetails })
     : Promise.resolve(null);
+  const furnizoriPromise = includeFacturi
+    ? buildPlatiFurnizoriData(startDateStr, endDateStr, { includeDetails: includeFacturiDetails })
+    : Promise.resolve(null);
 
-  const [rawSolicitari, rawComenzi, facturiScadente] = await Promise.all([
+  const [rawSolicitari, rawComenzi, facturiScadente, platiFurnizori] = await Promise.all([
     getAllItems(BOARD_SOLICITARI, solicitariQueryParams, SOLICITARI_COLUMN_IDS),
     getAllItems(BOARD_COMENZI, comenziQueryParams, COMENZI_COLUMN_IDS),
-    facturiPromise
+    facturiPromise,
+    furnizoriPromise
   ]);
 
   const validSolicitari = processSolicitari(rawSolicitari);
@@ -864,7 +1238,7 @@ async function buildReport(startDateStr, endDateStr, sources, options = {}) {
         tara_client: calcDistribution(validComenzi, i => getFallbackValue(i.column_values, 'dropdown_mkyq2ne1', 'lookup_mkxttcky'))
       }
     },
-    ...(includeFacturi ? { facturi_scadente: facturiScadente } : {})
+    ...(includeFacturi ? { facturi_scadente: facturiScadente, plati_furnizori: platiFurnizori } : {})
   };
 }
 
@@ -997,10 +1371,10 @@ async function generateExcelBuffer(reportData) {
   if (reportData.facturi_scadente) {
     const facturi = reportData.facturi_scadente;
 
-    // --- SHEET 3: FACTURI SCADENTE (SUMMARY) ---
-    const sheetFacturi = workbook.addWorksheet('Facturi Scadente');
+    // --- SHEET 3: FACTURI CLIENTI (SUMMARY) ---
+    const sheetFacturi = workbook.addWorksheet('Facturi Clienti - Rezumat');
     sheetFacturi.columns = [{ width: 56 }, { width: 18 }, { width: 18 }, { width: 44 }];
-    const summaryHeader = sheetFacturi.addRow(['FACTURI SCADENTE - REZUMAT', '', '', '']);
+    const summaryHeader = sheetFacturi.addRow(['FACTURI CLIENTI - REZUMAT', '', '', '']);
     sheetFacturi.mergeCells(`A${summaryHeader.number}:D${summaryHeader.number}`);
     summaryHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     summaryHeader.fill = fills.section;
@@ -1062,7 +1436,7 @@ async function generateExcelBuffer(reportData) {
     styleRowBorders(countersTitle);
     [
       ['Neincasate fara data scadenta', facturi.counters.unpaid_missing_due_date],
-      ['Neincasate restante fara factura emisa', facturi.counters.unpaid_overdue_without_invoice],
+      ['Neincasate restante fara factura emisa (Ctr >30 zile)', facturi.counters.unpaid_overdue_without_invoice],
       ['Ignorate: pret client <= 0', facturi.counters.skipped_zero_client_price],
       ['Incasate fara data incasarii', facturi.counters.paid_missing_collection_date],
       ['Incasari in perioada fara data scadenta (pt delay)', facturi.counters.cashflow_missing_due_date_for_delay]
@@ -1072,8 +1446,8 @@ async function generateExcelBuffer(reportData) {
       row.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
     });
 
-    // --- SHEET 4: FACTURI RESTANTE (DETAILS) ---
-    const sheetFacturiDetalii = workbook.addWorksheet('Facturi Detalii');
+    // --- SHEET 4: FACTURI CLIENTI (DETAILS) ---
+    const sheetFacturiDetalii = workbook.addWorksheet('Facturi Clienti - Detalii');
     const detailHeaders = [
       'Categorie',
       'Nume companie',
@@ -1162,8 +1536,8 @@ async function generateExcelBuffer(reportData) {
     addDetailRowsFromBucket(facturi.overdue.buckets);
     addDetailRowsFromBucket(facturi.upcoming.buckets);
 
-    // --- SHEET 5: CASH FLOW FACTURI ---
-    const sheetCashFlow = workbook.addWorksheet('CashFlow Facturi');
+    // --- SHEET 5: CASH FLOW FACTURI CLIENTI ---
+    const sheetCashFlow = workbook.addWorksheet('Facturi Clienti - CashFlow');
     sheetCashFlow.columns = [{ width: 42 }, { width: 16 }, { width: 20 }, { width: 44 }];
     const cashHeader = sheetCashFlow.addRow(['CASH FLOW FACTURI', '', '', '']);
     sheetCashFlow.mergeCells(`A${cashHeader.number}:D${cashHeader.number}`);
@@ -1223,6 +1597,231 @@ async function generateExcelBuffer(reportData) {
         `Principal: ${normalizeMissing(rowData.nume_principal) || '—'}`
       ].join(' | ');
       const row = sheetCashFlow.addRow([
+        normalizeMissing(rowData.nume_companie),
+        rowData.pret_client,
+        normalizeMissing(rowData.moneda),
+        details
+      ]);
+      styleRowBorders(row);
+      row.getCell(2).numFmt = '#,##0.00';
+      row.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
+    });
+  }
+
+  if (reportData.plati_furnizori) {
+    const furnizori = reportData.plati_furnizori;
+
+    const sheetFurnizori = workbook.addWorksheet('Plati Furnizori - Rezumat');
+    sheetFurnizori.columns = [{ width: 56 }, { width: 18 }, { width: 18 }, { width: 44 }];
+    const summaryHeader = sheetFurnizori.addRow(['PLATI FURNIZORI - REZUMAT', '', '', '']);
+    sheetFurnizori.mergeCells(`A${summaryHeader.number}:D${summaryHeader.number}`);
+    summaryHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    summaryHeader.fill = fills.section;
+    styleRowBorders(summaryHeader);
+
+    const metadataRows = [
+      ['Data referinta scadenta', furnizori.metadata.reference_date, '', ''],
+      ['Perioada cash flow', `${furnizori.metadata.cashflow_period.start} - ${furnizori.metadata.cashflow_period.end}`, '', ''],
+      ['Total restante neplatite (nr itemi)', furnizori.overdue.totals.item_count, '', ''],
+      ['Total restante neplatite (EUR)', furnizori.overdue.totals.total_pret_client_eur, '', formatCurrencyTotals(furnizori.overdue.totals.total_by_currency)],
+      ['Total scadente viitoare neplatite (nr itemi)', furnizori.upcoming.totals.item_count, '', ''],
+      ['Total scadente viitoare neplatite (EUR)', furnizori.upcoming.totals.total_pret_client_eur, '', formatCurrencyTotals(furnizori.upcoming.totals.total_by_currency)],
+      ['Total platit in perioada (nr itemi)', furnizori.cashflow.collected_in_period.item_count, '', ''],
+      ['Total platit in perioada (EUR)', furnizori.cashflow.collected_in_period.total_pret_client_eur, '', formatCurrencyTotals(furnizori.cashflow.collected_in_period.total_by_currency)]
+    ];
+    metadataRows.forEach((rowData) => {
+      const row = sheetFurnizori.addRow(rowData);
+      styleRowBorders(row);
+      row.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
+      if (typeof rowData[1] === 'number') row.getCell(2).numFmt = '#,##0.00';
+    });
+
+    const addFurnizoriSummarySection = (title, summaryRows) => {
+      sheetFurnizori.addRow([]);
+      const sectionRow = sheetFurnizori.addRow([title, '', '', '']);
+      sheetFurnizori.mergeCells(`A${sectionRow.number}:D${sectionRow.number}`);
+      sectionRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      sectionRow.fill = fills.section;
+      styleRowBorders(sectionRow);
+
+      const header = sheetFurnizori.addRow(['Categorie', 'Nr itemi', 'Total EUR', 'Total pe monede']);
+      header.font = { bold: true };
+      header.fill = fills.header;
+      styleRowBorders(header);
+
+      summaryRows.forEach((rowData) => {
+        const row = sheetFurnizori.addRow([
+          rowData.valoare,
+          rowData.nr,
+          rowData.total_pret_client_eur,
+          formatCurrencyTotals(rowData.total_by_currency)
+        ]);
+        styleRowBorders(row);
+        row.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
+        row.getCell(3).alignment = { vertical: 'middle', horizontal: 'right' };
+        row.getCell(3).numFmt = '#,##0.00';
+      });
+    };
+
+    addFurnizoriSummarySection('Restante neplatite dupa scadenta', furnizori.overdue.summary);
+    addFurnizoriSummarySection('Scadente viitoare neplatite', furnizori.upcoming.summary);
+    addFurnizoriSummarySection('Delay plata furnizori (dupa data scadenta)', furnizori.cashflow.delay_summary);
+
+    sheetFurnizori.addRow([]);
+    const countersTitle = sheetFurnizori.addRow(['CALITATE DATE', '', '', '']);
+    sheetFurnizori.mergeCells(`A${countersTitle.number}:D${countersTitle.number}`);
+    countersTitle.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    countersTitle.fill = fills.section;
+    styleRowBorders(countersTitle);
+    [
+      ['Neplatite fara data scadenta', furnizori.counters.unpaid_missing_due_date],
+      ['Neplatite restante fara factura furnizor (Ctr >30 zile)', furnizori.counters.unpaid_overdue_without_invoice],
+      ['Ignorate: pret furnizor <= 0', furnizori.counters.skipped_zero_client_price],
+      ['Platite fara data platii', furnizori.counters.paid_missing_collection_date],
+      ['Plati in perioada fara data scadenta (pt delay)', furnizori.counters.cashflow_missing_due_date_for_delay]
+    ].forEach(([label, value]) => {
+      const row = sheetFurnizori.addRow([label, value, '', '']);
+      styleRowBorders(row);
+      row.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
+    });
+
+    const sheetFurnizoriDetalii = workbook.addWorksheet('Plati Furnizori - Detalii');
+    const detailHeaders = [
+      'Categorie',
+      'Nume furnizor',
+      'Data Ctr.',
+      'Nr. cursa',
+      'Nume principal',
+      'Nume secundar',
+      'Sursa client',
+      'Email contabilitate',
+      'Pret furnizor',
+      'Moneda',
+      'Furnizor pe',
+      'Observatii interne',
+      'Plata la (furnizor)',
+      'Conditii plata furnizor',
+      'Data descarcare',
+      'Trimite originale clientului?',
+      'Motiv plata termen',
+      'Factura furnizor',
+      'POD',
+      'Plata furnizor',
+      'Data scadenta furnizor',
+      'Data plata furnizor',
+      'Zile depasire / pana la scadenta',
+      'Status plata furnizor'
+    ];
+    sheetFurnizoriDetalii.columns = [
+      { width: 30 }, { width: 28 }, { width: 13 }, { width: 12 }, { width: 18 }, { width: 18 }, { width: 18 },
+      { width: 28 }, { width: 14 }, { width: 10 }, { width: 12 }, { width: 32 }, { width: 16 }, { width: 20 },
+      { width: 18 }, { width: 14 }, { width: 20 }, { width: 18 }, { width: 18 }, { width: 14 }, { width: 14 },
+      { width: 14 }, { width: 22 }, { width: 16 }
+    ];
+    const detailsHeader = sheetFurnizoriDetalii.addRow(detailHeaders);
+    detailsHeader.font = { bold: true };
+    detailsHeader.fill = fills.header;
+    styleRowBorders(detailsHeader);
+
+    const addSupplierRowsFromBucket = (bucketMap) => {
+      Object.values(bucketMap).forEach(bucket => {
+        bucket.items.forEach((rowData) => {
+          const row = sheetFurnizoriDetalii.addRow([
+            bucket.label,
+            normalizeMissing(rowData.nume_companie),
+            normalizeMissing(rowData.data_ctr),
+            normalizeMissing(rowData.nr_cursa),
+            normalizeMissing(rowData.nume_principal),
+            normalizeMissing(rowData.nume_secundar),
+            normalizeMissing(rowData.sursa_client),
+            normalizeMissing(rowData.email_contabilitate_client),
+            rowData.pret_client,
+            normalizeMissing(rowData.moneda),
+            normalizeMissing(rowData.furnizor_pe),
+            normalizeMissing(rowData.observatii_interne),
+            rowData.plata_la_furnizor,
+            normalizeMissing(rowData.conditii_plata_client),
+            normalizeMissing(rowData.data_descarcare),
+            normalizeMissing(rowData.trimite_originale_clientului),
+            normalizeMissing(rowData.motiv_plata_termen),
+            normalizeMissing(rowData.factura_furnizor),
+            normalizeMissing(rowData.pod),
+            normalizeMissing(rowData.plata_furnizor),
+            normalizeMissing(rowData.data_scadenta),
+            normalizeMissing(rowData.data_incasarii),
+            normalizeMissing(rowData.zile_scadenta_info),
+            normalizeMissing(rowData.status_plata_client_raw)
+          ]);
+          styleRowBorders(row);
+          row.getCell(9).numFmt = '#,##0.00';
+          row.getCell(13).numFmt = '#,##0';
+        });
+      });
+    };
+
+    addSupplierRowsFromBucket(furnizori.overdue.buckets);
+    addSupplierRowsFromBucket(furnizori.upcoming.buckets);
+
+    const sheetCashFlowFurn = workbook.addWorksheet('Plati Furnizori - CashFlow');
+    sheetCashFlowFurn.columns = [{ width: 42 }, { width: 16 }, { width: 20 }, { width: 44 }];
+    const cashHeader = sheetCashFlowFurn.addRow(['CASH FLOW FURNIZORI', '', '', '']);
+    sheetCashFlowFurn.mergeCells(`A${cashHeader.number}:D${cashHeader.number}`);
+    cashHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cashHeader.fill = fills.section;
+    styleRowBorders(cashHeader);
+
+    [
+      ['Perioada analizata', `${furnizori.metadata.cashflow_period.start} - ${furnizori.metadata.cashflow_period.end}`, '', ''],
+      ['Itemi platiti in perioada', furnizori.cashflow.collected_in_period.item_count, '', ''],
+      ['Total platit in perioada (EUR)', furnizori.cashflow.collected_in_period.total_pret_client_eur, '', formatCurrencyTotals(furnizori.cashflow.collected_in_period.total_by_currency)]
+    ].forEach(rowData => {
+      const row = sheetCashFlowFurn.addRow(rowData);
+      styleRowBorders(row);
+      row.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
+      if (typeof rowData[1] === 'number') row.getCell(2).numFmt = '#,##0.00';
+    });
+
+    sheetCashFlowFurn.addRow([]);
+    const delayTitle = sheetCashFlowFurn.addRow(['Distribuire plati vs scadenta furnizor', '', '', '']);
+    sheetCashFlowFurn.mergeCells(`A${delayTitle.number}:D${delayTitle.number}`);
+    delayTitle.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    delayTitle.fill = fills.section;
+    styleRowBorders(delayTitle);
+    const delayHeader = sheetCashFlowFurn.addRow(['Interval', 'Nr itemi', 'Total EUR', 'Total pe monede']);
+    delayHeader.font = { bold: true };
+    delayHeader.fill = fills.header;
+    styleRowBorders(delayHeader);
+    furnizori.cashflow.delay_summary.forEach((rowData) => {
+      const row = sheetCashFlowFurn.addRow([
+        rowData.valoare,
+        rowData.nr,
+        rowData.total_pret_client_eur,
+        formatCurrencyTotals(rowData.total_by_currency)
+      ]);
+      styleRowBorders(row);
+      row.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
+      row.getCell(3).alignment = { vertical: 'middle', horizontal: 'right' };
+      row.getCell(3).numFmt = '#,##0.00';
+    });
+
+    sheetCashFlowFurn.addRow([]);
+    const cashDetailsTitle = sheetCashFlowFurn.addRow(['Detalii plati in perioada', '', '', '']);
+    sheetCashFlowFurn.mergeCells(`A${cashDetailsTitle.number}:D${cashDetailsTitle.number}`);
+    cashDetailsTitle.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cashDetailsTitle.fill = fills.section;
+    styleRowBorders(cashDetailsTitle);
+    const cashDetailsHeader = sheetCashFlowFurn.addRow(['Furnizor', 'Pret furnizor', 'Moneda', 'Detalii']);
+    cashDetailsHeader.font = { bold: true };
+    cashDetailsHeader.fill = fills.header;
+    styleRowBorders(cashDetailsHeader);
+    furnizori.cashflow.collected_in_period.items.forEach((rowData) => {
+      const details = [
+        `Scadenta furnizor: ${normalizeMissing(rowData.data_scadenta) || '—'}`,
+        `Data plata: ${normalizeMissing(rowData.data_incasarii) || '—'}`,
+        `Info scadenta: ${normalizeMissing(rowData.zile_scadenta_info) || '—'}`,
+        `Principal: ${normalizeMissing(rowData.nume_principal) || '—'}`
+      ].join(' | ');
+      const row = sheetCashFlowFurn.addRow([
         normalizeMissing(rowData.nume_companie),
         rowData.pret_client,
         normalizeMissing(rowData.moneda),
@@ -1301,6 +1900,7 @@ async function runAutomatedWeeklyReport() {
   if (AUTO_REPORT_RECIPIENTS_NO_FACTURI.length > 0) {
     const reportNoFacturi = { ...report };
     delete reportNoFacturi.facturi_scadente;
+    delete reportNoFacturi.plati_furnizori;
     const bufferNoFacturi = await generateExcelBuffer(reportNoFacturi);
     await sendReportEmail(reportNoFacturi, bufferNoFacturi, {
       recipients: AUTO_REPORT_RECIPIENTS_NO_FACTURI,
@@ -1360,10 +1960,11 @@ app.post('/api/report/facturi', async (req, res) => {
     if (!startDate || !endDate) {
       return res.status(400).json({ error: 'startDate și endDate sunt obligatorii.' });
     }
-    const facturiScadente = await buildFacturiScadenteData(startDate, endDate, {
-      includeDetails: includeDetails === true
-    });
-    res.json({ facturi_scadente: facturiScadente });
+    const [facturiScadente, platiFurnizori] = await Promise.all([
+      buildFacturiScadenteData(startDate, endDate, { includeDetails: includeDetails === true }),
+      buildPlatiFurnizoriData(startDate, endDate, { includeDetails: includeDetails === true })
+    ]);
+    res.json({ facturi_scadente: facturiScadente, plati_furnizori: platiFurnizori });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
@@ -1421,6 +2022,7 @@ module.exports = {
   AUTO_REPORT_CRON_EXPRESSION,
   buildReport,
   buildFacturiScadenteData,
+  buildPlatiFurnizoriData,
   generateExcelBuffer,
   sendReportEmail,
   getPreviousFullWeekRange,

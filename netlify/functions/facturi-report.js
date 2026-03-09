@@ -1,4 +1,4 @@
-const { buildFacturiScadenteData } = require('../../index');
+const { buildFacturiScadenteData, buildPlatiFurnizoriData } = require('../../index');
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
@@ -33,14 +33,15 @@ exports.handler = async function handler(event) {
       };
     }
 
-    const facturi = await buildFacturiScadenteData(startDate, endDate, {
-      includeDetails: includeDetails === true
-    });
+    const [facturi, furnizori] = await Promise.all([
+      buildFacturiScadenteData(startDate, endDate, { includeDetails: includeDetails === true }),
+      buildPlatiFurnizoriData(startDate, endDate, { includeDetails: includeDetails === true })
+    ]);
 
     return {
       statusCode: 200,
       headers: jsonHeaders,
-      body: JSON.stringify({ facturi_scadente: facturi })
+      body: JSON.stringify({ facturi_scadente: facturi, plati_furnizori: furnizori })
     };
   } catch (error) {
     return {
