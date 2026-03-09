@@ -23,7 +23,7 @@ exports.handler = async function handler(event) {
 
   try {
     const body = parseJsonBody(event);
-    const { startDate, endDate, includeDetails } = body;
+    const { startDate, endDate, includeDetails, includeFurnizori } = body;
 
     if (!startDate || !endDate) {
       return {
@@ -33,15 +33,24 @@ exports.handler = async function handler(event) {
       };
     }
 
-    const [facturi, furnizori] = await Promise.all([
-      buildFacturiScadenteData(startDate, endDate, { includeDetails: includeDetails === true }),
-      buildPlatiFurnizoriData(startDate, endDate, { includeDetails: includeDetails === true })
-    ]);
+    const facturi = await buildFacturiScadenteData(startDate, endDate, {
+      includeDetails: includeDetails === true
+    });
+    let furnizori = null;
+    if (includeFurnizori === true) {
+      furnizori = await buildPlatiFurnizoriData(startDate, endDate, {
+        includeDetails: includeDetails === true
+      });
+    }
 
     return {
       statusCode: 200,
       headers: jsonHeaders,
-      body: JSON.stringify({ facturi_scadente: facturi, plati_furnizori: furnizori })
+      body: JSON.stringify(
+        includeFurnizori === true
+          ? { facturi_scadente: facturi, plati_furnizori: furnizori }
+          : { facturi_scadente: facturi }
+      )
     };
   } catch (error) {
     return {

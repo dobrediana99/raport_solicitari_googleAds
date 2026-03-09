@@ -101,11 +101,8 @@ const FACTURI_COLUMN_IDS_SUMMARY = [
   'date_mkyhsbh4',
   'date_mkv05mkx',
   'deal_creation_date',
-  'pulse_id_mks1dcwz',
-  'deal_owner',
   'deal_value',
-  'color_mkse3amh',
-  'board_relation_mkpw4bcs'
+  'color_mkse3amh'
 ];
 const FACTURI_COLUMN_IDS_DETAILS = [
   'color_mkv5g682',
@@ -143,11 +140,8 @@ const FURNIZORI_COLUMN_IDS_SUMMARY = [
   'date_mkxtsgp8',
   'date_mkv0ybzt',
   'deal_creation_date',
-  'pulse_id_mks1dcwz',
-  'deal_owner',
   'numeric_mkpknkjp',
   'color_mkse3amh',
-  'board_relation_mkse9rp2',
   'file_mksegx89'
 ];
 
@@ -310,6 +304,34 @@ const buildStatusAndDateQueryParams = (statusColumnId, statusIndexes, dateColumn
   return `{ rules: [
     { column_id: "${statusColumnId}", operator: any_of, compare_value: [${indexes}] },
     { column_id: "${dateColumnId}", operator: between, compare_value: ["${startDateStr}", "${endDateStr}"] }
+  ] }`;
+};
+
+const buildStatusAndPositiveAmountQueryParams = (statusColumnId, statusIndexes, amountColumnId) => {
+  const indexes = (Array.isArray(statusIndexes) ? statusIndexes : [])
+    .filter(Number.isInteger)
+    .join(', ');
+  return `{ rules: [
+    { column_id: "${statusColumnId}", operator: any_of, compare_value: [${indexes}] },
+    { column_id: "${amountColumnId}", operator: greater_than, compare_value: [0] }
+  ] }`;
+};
+
+const buildStatusDateAndPositiveAmountQueryParams = (
+  statusColumnId,
+  statusIndexes,
+  dateColumnId,
+  startDateStr,
+  endDateStr,
+  amountColumnId
+) => {
+  const indexes = (Array.isArray(statusIndexes) ? statusIndexes : [])
+    .filter(Number.isInteger)
+    .join(', ');
+  return `{ rules: [
+    { column_id: "${statusColumnId}", operator: any_of, compare_value: [${indexes}] },
+    { column_id: "${dateColumnId}", operator: between, compare_value: ["${startDateStr}", "${endDateStr}"] },
+    { column_id: "${amountColumnId}", operator: greater_than, compare_value: [0] }
   ] }`;
 };
 
@@ -694,6 +716,50 @@ async function getAllItems(boardId, queryParams = null, columnIds = null) {
   return items;
 }
 
+async function getItemsByIds(itemIds, columnIds = null) {
+  const ids = Array.isArray(itemIds) ? itemIds.map(id => String(id)).filter(Boolean) : [];
+  if (!ids.length) return [];
+  const chunkSize = 100;
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += chunkSize) chunks.push(ids.slice(i, i + chunkSize));
+
+  const results = [];
+  const columnIdsArg = Array.isArray(columnIds) && columnIds.length > 0
+    ? `(ids: [${columnIds.map(id => `"${id}"`).join(', ')}])`
+    : '';
+
+  for (const chunk of chunks) {
+    const query = `
+      query {
+        items(ids: [${chunk.join(',')}]) {
+          id
+          name
+          column_values${columnIdsArg} {
+            id
+            type
+            text
+            value
+            ... on FormulaValue { display_value }
+            ... on NumbersValue { number symbol }
+            ... on DateValue { date }
+            ... on StatusValue { label }
+            ... on BoardRelationValue { display_value }
+            ... on MirrorValue { display_value }
+          }
+        }
+      }
+    `;
+    const res = await axios.post(
+      'https://api.monday.com/v2',
+      { query },
+      { headers: { Authorization: MONDAY_API_TOKEN, 'API-Version': '2023-10' } }
+    );
+    if (res.data.errors) throw new Error(JSON.stringify(res.data.errors));
+    results.push(...(res.data.data?.items || []));
+  }
+  return results;
+}
+
 function buildFacturiScadenteReport(input, options = {}) {
   const {
     startDateStr,
@@ -1025,24 +1091,50 @@ function trimAgingItemsForSummary(report) {
   return clone;
 }
 
+function enrichAgingReportWithDetails(report, detailedItems, rowFactory, referenceDate) {
+  if (!report || !Array.isArray(detailedItems) || !detailedItems.length || typeof rowFactory !== 'function') return report;
+  const detailedMap = new Map();
+  detailedItems.forEach((item) => {
+    const row = rowFactory(item, { referenceDate });
+    if (row?.item_id) detailedMap.set(String(row.item_id), row);
+  });
+
+  const updateRows = (rows) => {
+    (rows || []).forEach((rowRef) => {
+      const detailed = detailedMap.get(String(rowRef.item_id));
+      if (!detailed) return;
+      const existingDelay = rowRef.intarziere_incasare_zile;
+      Object.assign(rowRef, detailed);
+      if (existingDelay !== undefined) rowRef.intarziere_incasare_zile = existingDelay;
+    });
+  };
+
+  Object.values(report.overdue?.buckets || {}).forEach(bucket => updateRows(bucket.items));
+  Object.values(report.upcoming?.buckets || {}).forEach(bucket => updateRows(bucket.items));
+  updateRows(report.cashflow?.collected_in_period?.items);
+  Object.values(report.cashflow?.delay_buckets || {}).forEach(bucket => updateRows(bucket.items));
+  return report;
+}
+
 async function buildFacturiScadenteData(startDateStr, endDateStr, options = {}) {
   const { includeDetails = true } = options;
-  const selectedColumns = includeDetails ? FACTURI_COLUMN_IDS_DETAILS : FACTURI_COLUMN_IDS_SUMMARY;
-  const facturiNeincasateQueryParams = buildStatusQueryParams(
+  const facturiNeincasateQueryParams = buildStatusAndPositiveAmountQueryParams(
     FACTURI_STATUS_PLATA_COLUMN_ID,
-    FACTURI_STATUS_NEINCASAT_INDEXES
+    FACTURI_STATUS_NEINCASAT_INDEXES,
+    'deal_value'
   );
-  const facturiIncasateInPerioadaQueryParams = buildStatusAndDateQueryParams(
+  const facturiIncasateInPerioadaQueryParams = buildStatusDateAndPositiveAmountQueryParams(
     FACTURI_STATUS_PLATA_COLUMN_ID,
     FACTURI_STATUS_INCASAT_INDEXES,
     FACTURI_DATA_INCASARII_COLUMN_ID,
     startDateStr,
-    endDateStr
+    endDateStr,
+    'deal_value'
   );
 
   const [rawComenziFacturiNeincasate, rawComenziFacturiIncasateInPerioada] = await Promise.all([
-    getAllItems(BOARD_COMENZI, facturiNeincasateQueryParams, selectedColumns),
-    getAllItems(BOARD_COMENZI, facturiIncasateInPerioadaQueryParams, selectedColumns)
+    getAllItems(BOARD_COMENZI, facturiNeincasateQueryParams, FACTURI_COLUMN_IDS_SUMMARY),
+    getAllItems(BOARD_COMENZI, facturiIncasateInPerioadaQueryParams, FACTURI_COLUMN_IDS_SUMMARY)
   ]);
 
   const fullReport = buildFacturiScadenteReport({
@@ -1053,27 +1145,44 @@ async function buildFacturiScadenteData(startDateStr, endDateStr, options = {}) 
     endDateStr
   });
 
-  return includeDetails ? fullReport : trimAgingItemsForSummary(fullReport);
+  if (!includeDetails) return trimAgingItemsForSummary(fullReport);
+
+  const detailIds = new Set();
+  Object.values(fullReport.overdue?.buckets || {}).forEach(bucket => (bucket.items || []).forEach(row => detailIds.add(String(row.item_id))));
+  Object.values(fullReport.upcoming?.buckets || {}).forEach(bucket => (bucket.items || []).forEach(row => detailIds.add(String(row.item_id))));
+  (fullReport.cashflow?.collected_in_period?.items || []).forEach(row => detailIds.add(String(row.item_id)));
+
+  if (detailIds.size > 0) {
+    const detailedItems = await getItemsByIds(Array.from(detailIds), FACTURI_COLUMN_IDS_DETAILS);
+    enrichAgingReportWithDetails(
+      fullReport,
+      detailedItems,
+      makeFacturiRow,
+      DateTime.fromISO(fullReport.metadata.reference_date, { zone: TZ }).startOf('day')
+    );
+  }
+  return fullReport;
 }
 
 async function buildPlatiFurnizoriData(startDateStr, endDateStr, options = {}) {
   const { includeDetails = true } = options;
-  const selectedColumns = includeDetails ? FURNIZORI_COLUMN_IDS_DETAILS : FURNIZORI_COLUMN_IDS_SUMMARY;
-  const furnizoriNeplatitiQueryParams = buildStatusQueryParams(
+  const furnizoriNeplatitiQueryParams = buildStatusAndPositiveAmountQueryParams(
     FURNIZORI_STATUS_PLATA_COLUMN_ID,
-    FURNIZORI_STATUS_NEPLATIT_INDEXES
+    FURNIZORI_STATUS_NEPLATIT_INDEXES,
+    'numeric_mkpknkjp'
   );
-  const furnizoriPlatitiInPerioadaQueryParams = buildStatusAndDateQueryParams(
+  const furnizoriPlatitiInPerioadaQueryParams = buildStatusDateAndPositiveAmountQueryParams(
     FURNIZORI_STATUS_PLATA_COLUMN_ID,
     FURNIZORI_STATUS_PLATIT_INDEXES,
     FURNIZORI_DATA_PLATII_COLUMN_ID,
     startDateStr,
-    endDateStr
+    endDateStr,
+    'numeric_mkpknkjp'
   );
 
   const [rawFurnizoriNeplatiti, rawFurnizoriPlatitiInPerioada] = await Promise.all([
-    getAllItems(BOARD_COMENZI, furnizoriNeplatitiQueryParams, selectedColumns),
-    getAllItems(BOARD_COMENZI, furnizoriPlatitiInPerioadaQueryParams, selectedColumns)
+    getAllItems(BOARD_COMENZI, furnizoriNeplatitiQueryParams, FURNIZORI_COLUMN_IDS_SUMMARY),
+    getAllItems(BOARD_COMENZI, furnizoriPlatitiInPerioadaQueryParams, FURNIZORI_COLUMN_IDS_SUMMARY)
   ]);
 
   const fullReport = buildPlatiFurnizoriReport({
@@ -1084,7 +1193,23 @@ async function buildPlatiFurnizoriData(startDateStr, endDateStr, options = {}) {
     endDateStr
   });
 
-  return includeDetails ? fullReport : trimAgingItemsForSummary(fullReport);
+  if (!includeDetails) return trimAgingItemsForSummary(fullReport);
+
+  const detailIds = new Set();
+  Object.values(fullReport.overdue?.buckets || {}).forEach(bucket => (bucket.items || []).forEach(row => detailIds.add(String(row.item_id))));
+  Object.values(fullReport.upcoming?.buckets || {}).forEach(bucket => (bucket.items || []).forEach(row => detailIds.add(String(row.item_id))));
+  (fullReport.cashflow?.collected_in_period?.items || []).forEach(row => detailIds.add(String(row.item_id)));
+
+  if (detailIds.size > 0) {
+    const detailedItems = await getItemsByIds(Array.from(detailIds), FURNIZORI_COLUMN_IDS_DETAILS);
+    enrichAgingReportWithDetails(
+      fullReport,
+      detailedItems,
+      makeFurnizorRow,
+      DateTime.fromISO(fullReport.metadata.reference_date, { zone: TZ }).startOf('day')
+    );
+  }
+  return fullReport;
 }
 
 // ====================================================
@@ -1956,15 +2081,20 @@ app.post('/api/report', async (req, res) => {
 
 app.post('/api/report/facturi', async (req, res) => {
   try {
-    const { startDate, endDate, includeDetails } = req.body;
+    const { startDate, endDate, includeDetails, includeFurnizori } = req.body;
     if (!startDate || !endDate) {
       return res.status(400).json({ error: 'startDate și endDate sunt obligatorii.' });
     }
-    const [facturiScadente, platiFurnizori] = await Promise.all([
-      buildFacturiScadenteData(startDate, endDate, { includeDetails: includeDetails === true }),
-      buildPlatiFurnizoriData(startDate, endDate, { includeDetails: includeDetails === true })
-    ]);
-    res.json({ facturi_scadente: facturiScadente, plati_furnizori: platiFurnizori });
+    const facturiScadente = await buildFacturiScadenteData(startDate, endDate, {
+      includeDetails: includeDetails === true
+    });
+    if (includeFurnizori === true) {
+      const platiFurnizori = await buildPlatiFurnizoriData(startDate, endDate, {
+        includeDetails: includeDetails === true
+      });
+      return res.json({ facturi_scadente: facturiScadente, plati_furnizori: platiFurnizori });
+    }
+    res.json({ facturi_scadente: facturiScadente });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });
