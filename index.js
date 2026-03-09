@@ -443,6 +443,22 @@ const pickFirstDate = (colValues, ids) => {
 
 const toDayStart = (dateIso) => DateTime.fromISO(dateIso, { zone: TZ }).startOf('day');
 
+const getCashflowScadentaInfo = (rowData) => {
+  const dueRaw = normalizeMissing(rowData?.data_scadenta);
+  if (!dueRaw) return '(fara data scadenta)';
+
+  const movementRaw = normalizeMissing(rowData?.data_incasarii);
+  if (!movementRaw) return '(fara data incasarii)';
+
+  const dueDate = toDayStart(String(dueRaw));
+  const movementDate = toDayStart(String(movementRaw));
+  if (!dueDate.isValid || !movementDate.isValid) return '(date invalide)';
+
+  const diff = Math.floor(movementDate.diff(dueDate, 'days').days);
+  if (diff >= 0) return `${diff} zile depasire`;
+  return `${Math.abs(diff)} zile pana la scadenta`;
+};
+
 const makeFacturiRow = (item, options = {}) => {
   const { referenceDate } = options;
   const cols = item.column_values || [];
@@ -1718,7 +1734,7 @@ async function generateExcelBuffer(reportData) {
       const details = [
         `Scadenta: ${normalizeMissing(rowData.data_scadenta) || '—'}`,
         `Incasare: ${normalizeMissing(rowData.data_incasarii) || '—'}`,
-        `Info scadenta: ${normalizeMissing(rowData.zile_scadenta_info) || '—'}`,
+        `Info scadenta: ${getCashflowScadentaInfo(rowData)}`,
         `Principal: ${normalizeMissing(rowData.nume_principal) || '—'}`
       ].join(' | ');
       const row = sheetCashFlow.addRow([
@@ -1943,7 +1959,7 @@ async function generateExcelBuffer(reportData) {
       const details = [
         `Scadenta furnizor: ${normalizeMissing(rowData.data_scadenta) || '—'}`,
         `Data plata: ${normalizeMissing(rowData.data_incasarii) || '—'}`,
-        `Info scadenta: ${normalizeMissing(rowData.zile_scadenta_info) || '—'}`,
+        `Info scadenta: ${getCashflowScadentaInfo(rowData)}`,
         `Principal: ${normalizeMissing(rowData.nume_principal) || '—'}`
       ].join(' | ');
       const row = sheetCashFlowFurn.addRow([
