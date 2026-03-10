@@ -737,6 +737,7 @@ async function getItemsByIds(itemIds, columnIds = null) {
   if (!ids.length) return [];
   // Monday API returns max 25 items for items(ids: [...]).
   const chunkSize = 25;
+  const concurrentRequests = 4;
   const chunks = [];
   for (let i = 0; i < ids.length; i += chunkSize) chunks.push(ids.slice(i, i + chunkSize));
 
@@ -745,7 +746,7 @@ async function getItemsByIds(itemIds, columnIds = null) {
     ? `(ids: [${columnIds.map(id => `"${id}"`).join(', ')}])`
     : '';
 
-  for (const chunk of chunks) {
+  const fetchChunk = async (chunk) => {
     const query = `
       query {
         items(ids: [${chunk.join(',')}]) {
@@ -766,13 +767,28 @@ async function getItemsByIds(itemIds, columnIds = null) {
         }
       }
     `;
-    const res = await axios.post(
-      'https://api.monday.com/v2',
-      { query },
-      { headers: { Authorization: MONDAY_API_TOKEN, 'API-Version': '2023-10' } }
-    );
-    if (res.data.errors) throw new Error(JSON.stringify(res.data.errors));
-    results.push(...(res.data.data?.items || []));
+    const retries = 3;
+    for (let i = 0; i < retries; i++) {
+      try {
+        const res = await axios.post(
+          'https://api.monday.com/v2',
+          { query },
+          { headers: { Authorization: MONDAY_API_TOKEN, 'API-Version': '2023-10' } }
+        );
+        if (res.data.errors) throw new Error(JSON.stringify(res.data.errors));
+        return res.data.data?.items || [];
+      } catch (err) {
+        if (i === retries - 1) throw err;
+        await delay(Math.pow(2, i) * 250);
+      }
+    }
+    return [];
+  };
+
+  for (let i = 0; i < chunks.length; i += concurrentRequests) {
+    const currentBatch = chunks.slice(i, i + concurrentRequests);
+    const batchResults = await Promise.all(currentBatch.map(fetchChunk));
+    batchResults.forEach(items => results.push(...items));
   }
   return results;
 }
