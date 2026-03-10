@@ -735,7 +735,8 @@ async function getAllItems(boardId, queryParams = null, columnIds = null) {
 async function getItemsByIds(itemIds, columnIds = null) {
   const ids = Array.isArray(itemIds) ? itemIds.map(id => String(id)).filter(Boolean) : [];
   if (!ids.length) return [];
-  const chunkSize = 100;
+  // Monday API returns max 25 items for items(ids: [...]).
+  const chunkSize = 25;
   const chunks = [];
   for (let i = 0; i < ids.length; i += chunkSize) chunks.push(ids.slice(i, i + chunkSize));
 
