@@ -20,7 +20,15 @@ const EMAIL_FROM = 'diana.d@crystal-logistics-services.com';
 const BOARD_SOLICITARI = 1905911565;
 const BOARD_COMENZI = 2030349838;
 const DEFAULT_REPORT_SOURCES = ['website', 'Telefon / WhatsApp Fix', 'newsletter'];
-const AUTO_REPORT_RECIPIENTS = ['rafael.o@crystal-logistics-services.com'];
+const AUTO_REPORT_RECIPIENTS = [
+  'rafael.o@crystal-logistics-services.com',
+  'ana-maria.t@crystal-logistics-services.com',
+  'narcisa.g@crystal-logistics-services.com',
+  'beatrice.s@crystal-logistics-services.com',
+  'bianca.o@crystal-logistics-services.com',
+  'bogdan.s@crystal-logistics-services.com',
+  'alin.l@crystal-logistics-services.com'
+];
 const AUTO_REPORT_SUBJECT_TEMPLATE = 'Raport GoogleAds + Facturi Scadente – {start} – {end}';
 const AUTO_REPORT_RECIPIENTS_NO_FACTURI = [
   'andrei.focsaneanu@sinaps.ro',
