@@ -11,16 +11,16 @@ exports.config = {
 
 exports.handler = async function handler() {
   const nowBucharest = DateTime.now().setZone(TZ);
-  if (nowBucharest.weekday !== 1 || nowBucharest.hour !== 8) {
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
-        success: true,
-        skipped: true,
-        reason: 'Aștept intervalul Luni 08:00 Europe/Bucharest.',
-        now: nowBucharest.toISO()
-      })
-    };
+  if (nowBucharest.weekday !== 1 || nowBucharest.hour < 8 || nowBucharest.hour >= 9) {
+  return {
+    statusCode: 200,
+    body: JSON.stringify({
+      success: true,
+      skipped: true,
+      reason: "Aștept intervalul Luni 08:00-09:00 Europe/Bucharest."
+    })
+  };
+}
   }
 
   try {
