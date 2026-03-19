@@ -187,7 +187,14 @@ const SOLICITARI_COLUMN_IDS = [
   'dropdown_mkx687jv',
   'color_mkx12a19',
   'color_mksemxby',
-  'dropdown_mkxk7c69'
+  'dropdown_mkxk7c69',
+  'color_mm1g3k16',   // Completare Formular
+  'color_mkpx8h4r',   // Prioritate
+  'color_mky4y026',   // Volum Lunar
+  'color_mkrbz0s5',   // Tip Companie
+  'numeric_mm1g4the', // Expected Value (RON)
+  'color_mm1ggp28',   // Value of Customer
+  'color_mm1grjrc'    // Pagina Sursa
 ];
 const COMENZI_COLUMN_IDS = [
   'deal_creation_date',
