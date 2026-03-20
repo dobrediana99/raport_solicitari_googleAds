@@ -6,6 +6,8 @@
 [functions]
   node_bundler = "esbuild"
 
+# --- API REDIRECTS MUST COME FIRST ---
+
 [[redirects]]
   from = "/api/report"
   to = "/.netlify/functions/report"
@@ -24,4 +26,11 @@
 [[redirects]]
   from = "/api/send-test"
   to = "/.netlify/functions/send-test"
+  status = 200
+
+# --- SPA FALLBACK (MUST BE AT THE BOTTOM) ---
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
   status = 200
