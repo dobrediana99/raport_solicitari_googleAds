@@ -1333,6 +1333,21 @@ async function buildReport(startDateStr, endDateStr, sources, options = {}) {
     })).sort((a, b) => b.nr - a.nr);
   };
 
+  const calcExpectedValueSummary = (items) => {
+    const values = items
+      .map(item => reportUtils.getNumericColumnValue(item.column_values || [], 'numeric_mm1g4the'))
+      .filter(value => value !== null && value !== undefined && !Number.isNaN(Number(value)))
+      .map(Number);
+
+    const count = values.length;
+    const total = count ? values.reduce((sum, value) => sum + value, 0) : null;
+    return {
+      total,
+      avg: count ? total / count : null,
+      count
+    };
+  };
+
   console.log('Fetching Solicitari + Comenzi...');
   const solicitariQueryParams = buildDateQueryParams('deal_creation_date', startDateStr, endDateStr);
   const comenziQueryParams = buildDateQueryParams('deal_creation_date', startDateStr, endDateStr);
@@ -1375,6 +1390,7 @@ async function buildReport(startDateStr, endDateStr, sources, options = {}) {
     },
     solicitari: {
       n_total: validSolicitari.length,
+      expected_value_summary: calcExpectedValueSummary(validSolicitari),
       breakdowns: {
         status: calcDistribution(validSolicitari, i => getColValue(i.column_values, 'deal_stage')),
         sursa_client: calcDistribution(validSolicitari, i => getColValue(i.column_values, 'color_mkpv6sj4')),
@@ -1383,7 +1399,14 @@ async function buildReport(startDateStr, endDateStr, sources, options = {}) {
         tara_descarcare: calcDistribution(validSolicitari, i => getColValue(i.column_values, 'dropdown_mkx687jv')),
         mod_transport: calcDistribution(validSolicitari, i => getColValue(i.column_values, 'color_mkx12a19')),
         tip_marfa: calcDistribution(validSolicitari, i => getColValue(i.column_values, 'color_mksemxby')),
-        tara_client: calcDistribution(validSolicitari, i => getColValue(i.column_values, 'dropdown_mkxk7c69'))
+        tara_client: calcDistribution(validSolicitari, i => getColValue(i.column_values, 'dropdown_mkxk7c69')),
+        completare_formular: calcDistribution(validSolicitari, i => getColValue(i.column_values, 'color_mm1g3k16')),
+        prioritate: calcDistribution(validSolicitari, i => getColValue(i.column_values, 'color_mkpx8h4r')),
+        volum_lunar: calcDistribution(validSolicitari, i => getColValue(i.column_values, 'color_mky4y026')),
+        tip_companie: calcDistribution(validSolicitari, i => getColValue(i.column_values, 'color_mkrbz0s5')),
+        expected_value: calcDistribution(validSolicitari, i => getColValue(i.column_values, 'numeric_mm1g4the')),
+        value_of_customer: calcDistribution(validSolicitari, i => getColValue(i.column_values, 'color_mm1ggp28')),
+        pagina_sursa: calcDistribution(validSolicitari, i => getColValue(i.column_values, 'color_mm1grjrc'))
       }
     },
     comenzi: {
@@ -1484,7 +1507,18 @@ async function generateExcelBuffer(reportData) {
   sheetSol.getRow(1).fill = fills.metricHeader;
   styleRowBorders(sheetSol.getRow(1));
   sheetSol.getCell('B1').alignment = { vertical: 'middle', horizontal: 'right' };
-  addBreakdownTables(sheetSol, reportData.solicitari.breakdowns, 3);
+  const expectedSummary = reportData.solicitari.expected_value_summary || {};
+  const expectedTotalRow = sheetSol.addRow(['Expected Value Total (RON)', expectedSummary.total, '']);
+  styleRowBorders(expectedTotalRow);
+  expectedTotalRow.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
+  if (typeof expectedSummary.total === 'number') expectedTotalRow.getCell(2).numFmt = '#,##0.00';
+
+  const expectedAvgRow = sheetSol.addRow([`Expected Value Medie (RON) [n=${expectedSummary.count ?? 0}]`, expectedSummary.avg, '']);
+  styleRowBorders(expectedAvgRow);
+  expectedAvgRow.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
+  if (typeof expectedSummary.avg === 'number') expectedAvgRow.getCell(2).numFmt = '#,##0.00';
+
+  addBreakdownTables(sheetSol, reportData.solicitari.breakdowns, 5);
 
   // --- SHEET 2: COMENZI ---
   const sheetCom = workbook.addWorksheet('Comenzi');

@@ -394,6 +394,37 @@ export default function App() {
                 <TableBreakdown title="Țară Încărcare" data={report.solicitari.breakdowns.tara_incarcare} />
                 <TableBreakdown title="Țară Descărcare" data={report.solicitari.breakdowns.tara_descarcare} />
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
+                <TableBreakdown title="Completare Formular" data={report.solicitari.breakdowns.completare_formular} />
+                <TableBreakdown title="Prioritate" data={report.solicitari.breakdowns.prioritate} />
+                <TableBreakdown title="Volum Lunar" data={report.solicitari.breakdowns.volum_lunar} />
+                <TableBreakdown title="Tip Companie" data={report.solicitari.breakdowns.tip_companie} />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+                <TableBreakdown title="Value of Customer" data={report.solicitari.breakdowns.value_of_customer} />
+                <TableBreakdown title="Pagina Sursă" data={report.solicitari.breakdowns.pagina_sursa} />
+                <div className="space-y-3">
+                  <TableBreakdown title="Expected Value (RON)" data={report.solicitari.breakdowns.expected_value} />
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Expected Value - Total și Medie</p>
+                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
+                        <p className="text-[10px] font-bold uppercase text-slate-400">Total</p>
+                        <p className="text-sm font-black text-slate-700">{formatCurrencyOrDash(report.solicitari.expected_value_summary?.total, 'RON')}</p>
+                      </div>
+                      <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
+                        <p className="text-[10px] font-bold uppercase text-slate-400">Medie</p>
+                        <p className="text-sm font-black text-slate-700">
+                          {formatCurrencyOrDash(report.solicitari.expected_value_summary?.avg, 'RON')}
+                          <span className="ml-1 text-xs font-bold text-slate-400">(n={report.solicitari.expected_value_summary?.count ?? 0})</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </section>
 
             {/* COMENZI SECTION */}
