@@ -12,7 +12,7 @@ const reportUtils = require('./report-utils');
 // ====================================================
 const PORT = 4000;
 const TZ = 'Europe/Bucharest';
-const MONDAY_API_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjU3NDczMTUzNSwiYWFpIjoxMSwidWlkIjo4NzM3MDM4NSwiaWFkIjoiMjAyNS0xMC0xNlQwOTo1MTo0Ny4wMDBaIiwicGVyIjoibWU6d3JpdGUiLCJhY3RpZCI6MjgzNzcyNDAsInJnbiI6ImV1YzEifQ.bks6adI9YblX7erZYPv234teKA9-sniZGNZTqLW2XtA';
+const MONDAY_API_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjY0ODY5MTE3NiwiYWFpIjoxMSwidWlkIjoxMDI1NjkxMzYsImlhZCI6IjIwMjYtMDQtMjJUMDc6NDY6MjguMDAwWiIsInBlciI6Im1lOndyaXRlIiwiYWN0aWQiOjI4Mzc3MjQwLCJyZ24iOiJldWMxIn0.Qeau1CH7QUl6OuHAvl7cEVqs78trb-f3MCrg53xiqxw';
 const GMAIL_USER = 'diana.d@crystal-logistics-services.com';
 const GMAIL_APP_PASSWORD = 'sxtt gmyu dnwk hrut';
 const EMAIL_FROM = 'diana.d@crystal-logistics-services.com';
